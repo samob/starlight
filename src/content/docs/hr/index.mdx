@@ -1,0 +1,33 @@
+---
+title: Dobrodošli
+description: Osobna dokumentacija i projekti Sama Blatnika
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import profileImage from '../../../assets/samob.jpeg';
+
+## O meni
+
+Pozdrav! Ja sam Samo Blatnik, razvojni programer strastven prema tehnologiji i inovacijama.
+
+<div style="text-align: center; margin: 2rem 0;">
+  <img
+    src={profileImage.src}
+    alt="Samo Blatnik"
+    style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 3px solid #e5e7eb;"
+  />
+</div>
+
+## Što ćete pronaći ovdje
+
+<CardGrid>
+	<Card title="Biografija" icon="user">
+		Saznajte više o mojoj edukaciji, iskustvu i vještinama.
+	</Card>
+	<Card title="Projekti" icon="rocket">
+		Otkrijte moje projekte i postignuća u razvoju softvera.
+	</Card>
+	<Card title="Upute" icon="book">
+		Praktični vodiči i upute za različite tehnologije.
+	</Card>
+</CardGrid>

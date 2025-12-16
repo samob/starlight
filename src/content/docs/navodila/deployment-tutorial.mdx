@@ -1,0 +1,278 @@
+---
+title: Implementacija Astro strani s Traefik in Systemd
+description: Popolna vodila za implementacijo vaše Astro Starlight strani z uporabo Docker, Traefik reverse proxy in systemd upravljanje storitev
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Ta vodila vas vodi skozi postopek uvajanja vaše Astro Starlight strani na produkcijski strežnik. Po končanju boste imeli popolnoma funkcionalno spletno stran z avtomatskimi SSL certifikati, uravnoteženjem obremenitve in avtomatskim upravljanjem storitev. Vodila predpostavlja, da imate osnovno znanje Linux ukazne vrstice in dostop do strežnika z Debian/Ubuntu ter nameščenimi Docker in Docker Compose.
+
+## Predpogoji
+
+* Strežnik z Debian/Ubuntu
+* Nameščena Docker in Docker Compose
+* Domena (npr. `<example.com>`)
+* Osnovno znanje Linux ukazne vrstice
+
+- Strežnik z Debian/Ubuntu
+- Nameščena Docker in Docker Compose
+- Domena (npr. `vaša-stran.com`)
+- Osnovno znanje Linux ukazne vrstice
+
+## Pregled arhitekture
+
+```
+Internet → Traefik (SSL/Vrata 443) → Busybox httpd (Statične datoteke)
+                                      ↓
+                               Systemd upravljanje storitev
+```
+
+- **Traefik**: Obravnava SSL certifikate, usmerjanje in uravnoteženje obremenitve
+- **Busybox httpd**: Lahka spletna strežnica, ki servira statične Astro datoteke
+- **Systemd**: Upravlja življenjski cikel storitve in avtomatske ponovne zagon
+
+## Korak 1: Zgradite svojo Astro stran
+
+<Steps>
+
+1. **Namestite odvisnosti in zgradite**
+   ```bash
+   npm install
+   npm run build
+   ```
+
+2. **Preverite izhod gradnje**
+   ```bash
+   ls -la dist/
+   ```
+   Videti bi morali statične datoteke vaše strani v mapi `dist/`.
+
+</Steps>
+
+## Korak 2: Pripravite mapo za uvajanje
+
+<Steps>
+
+1. **Ustvarite mapo za uvajanje**
+   ```bash
+    sudo mkdir -p /etc/docker-compose/<your_site>
+    ```
+
+2. **Kopirajte datoteke gradnje**
+    ```bash
+    sudo cp -r dist /etc/docker-compose/<your_site>/
+    ```
+
+3. **Ustvarite Docker datoteke**
+    Ustvarite naslednje datoteke v `/etc/docker-compose/<your_site>/`:
+
+</Steps>
+
+### compose.yaml
+
+```yaml
+services:
+  traefik:
+    image: traefik:latest
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+       - "--certificatesresolvers.letsencrypt.acme.email=<your_email>"
+       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+     ports:
+       - "80:80"
+       - "443:443"
+       - "8080:8080"
+     volumes:
+       - /var/run/docker.sock:/var/run/docker.sock:ro
+       - /etc/docker-compose/<your_site>/letsencrypt:/letsencrypt
+    networks:
+      - web
+    restart: unless-stopped
+
+  web:
+    image: busybox:1.36
+    command: httpd -f -p 80 -h /www
+    volumes:
+       - /etc/docker-compose/<your_site>/dist:/www:ro
+     labels:
+       - "traefik.enable=true"
+       - "traefik.http.routers.<your_site>.rule=Host(`<example.com>`)"
+       - "traefik.http.routers.<your_site>.entrypoints=websecure"
+       - "traefik.http.routers.<your_site>.tls.certresolver=letsencrypt"
+       - "traefik.http.services.<your_site>.loadbalancer.server.port=80"
+    networks:
+      - web
+    restart: unless-stopped
+
+networks:
+  web:
+    driver: bridge
+```
+
+## Korak 3: Konfigurirajte Systemd storitev
+
+<Steps>
+
+1. **Ustvarite systemd predlogo storitve**
+   ```bash
+   sudo tee /etc/systemd/system/docker-compose@.service > /dev/null <<EOF
+   [Unit]
+   Description=docker-compose %i service
+   Requires=docker.service network-online.target
+   After=docker.service network-online.target
+
+   [Service]
+   WorkingDirectory=/etc/docker-compose/%i
+   Type=simple
+   TimeoutStartSec=15min
+   Restart=always
+
+   ExecStartPre=/usr/bin/docker compose pull --quiet
+   ExecStartPre=/usr/bin/docker compose build
+
+   ExecStart=/usr/bin/docker compose up --remove-orphans
+
+   ExecStop=/usr/bin/docker compose down --remove-orphans
+
+   ExecReload=/usr/bin/docker compose pull --quiet
+   ExecReload=/usr/bin/docker compose build
+
+   [Install]
+   WantedBy=multi-user.target
+   EOF
+   ```
+
+2. **Ponovno naložite systemd**
+   ```bash
+   sudo systemctl daemon-reload
+   ```
+
+</Steps>
+
+## Korak 4: Konfigurirajte DNS
+
+<Steps>
+
+1. **Dodajte A zapis**
+    Usmerite svojo domeno (`<example.com>`) na IP naslov vašega strežnika.
+
+2. **Preverite širjenje DNS**
+    ```bash
+    nslookup <example.com>
+    ```
+
+</Steps>
+
+## Korak 5: Zaženite storitev
+
+<Steps>
+
+1. **Zaženite storitev**
+    ```bash
+    sudo systemctl start docker-compose@<your_site>
+    ```
+
+2. **Omogočite ob zagonu**
+    ```bash
+    sudo systemctl enable docker-compose@<your_site>
+    ```
+
+3. **Preverite status**
+    ```bash
+    sudo systemctl status docker-compose@<your_site>
+    ```
+
+</Steps>
+
+## Korak 6: Preverite uvajanje
+
+<Steps>
+
+1. **Preverite Traefik nadzorno ploščo**
+    Obiščite `http://<your_server_ip>:8080` za ogled Traefik nadzorne plošče.
+
+2. **Preizkusite HTTPS**
+    Obiščite `https://<example.com>` - videti bi morali svojo Astro stran z veljavnim SSL certifikatom.
+
+3. **Preverite dnevnike**
+    ```bash
+    sudo systemctl logs docker-compose@<your_site>
+    ```
+
+</Steps>
+
+## Posodabljanje vaše strani
+
+<Steps>
+
+1. **Zgradite novo različico**
+   ```bash
+   npm run build
+   ```
+
+2. **Posodobite datoteke uvajanja**
+    ```bash
+    sudo cp -r dist/* /etc/docker-compose/<your_site>/dist/
+    ```
+
+3. **Ponovno naložite storitev**
+    ```bash
+    sudo systemctl reload docker-compose@<your_site>
+    ```
+
+</Steps>
+
+## Odpravljanje težav
+
+### Storitev se ne zažene
+```bash
+# Preverite Docker status
+sudo systemctl status docker
+
+# Preverite compose dnevnike
+sudo docker compose -f /etc/docker-compose/<your_site>/compose.yaml logs
+```
+
+### Težave z SSL certifikatom
+```bash
+# Preverite Traefik dnevnike
+sudo docker logs traefik
+
+# Preverite usmerjanje domene
+curl -I https://<example.com>
+```
+
+### Težave z dovoljenji
+```bash
+# Popravite dovoljenja
+sudo chown -R $USER:$USER /etc/docker-compose/<your_site>/
+```
+
+## Varnostni premisleki
+
+- Spremenite privzeta vrata Traefik nadzorne plošče (8080) v produkciji
+- Uporabite močna gesla za vse izpostavljene storitve
+- Ohranite Docker in Traefik posodobljena
+- Redno spremljajte dnevnike
+
+## Zaključek
+
+Sedaj imate produkcijsko pripravljeno uvajanje Astro strani z:
+- Avtomatskimi SSL certifikati
+- Uravnoteženjem obremenitve in usmerjanjem
+- Spremljanjem storitve in avtomatskim ponovnim zagonom
+- Enostavnimi posodobitvami in vzdrževanjem
+
+**Naslednji koraki:**
+
+* Preverite [Traefik dokumentacijo](https://doc.traefik.io/traefik/) za napredne konfiguracije
+* Oglejte si [Docker Compose dokumentacijo](https://docs.docker.com/compose/) za več možnosti
+* Razmislite o dodajanju monitoringa z orodji kot Prometheus ali Grafana
+
+##### Licenca: MIT

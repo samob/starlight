@@ -1,0 +1,278 @@
+---
+title: Deploying Astro Site with Traefik and Systemd
+description: Complete guide to deploying your Astro Starlight site using Docker, Traefik reverse proxy, and systemd service management
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+This tutorial guides you through deploying an Astro Starlight site using Docker containers, Traefik as a reverse proxy with automatic SSL, and systemd for service management. By the end, you'll have a production-ready site with automatic SSL certificates, load balancing, and automated service management. This guide assumes you have basic Linux command line knowledge and access to a server with Debian/Ubuntu, Docker, and Docker Compose installed.
+
+## Prerequisites
+
+* Server with Debian/Ubuntu
+* Docker and Docker Compose installed
+* Domain name (e.g., `<example.com>`)
+* Basic knowledge of Linux command line
+
+- Server with Debian/Ubuntu
+- Docker and Docker Compose installed
+- Domain name (e.g., `your-site.com`)
+- Basic knowledge of Linux command line
+
+## Architecture Overview
+
+```
+Internet → Traefik (SSL/Port 443) → Busybox httpd (Static Files)
+                                      ↓
+                               Systemd Service Management
+```
+
+- **Traefik**: Handles SSL certificates, routing, and load balancing
+- **Busybox httpd**: Lightweight web server serving static Astro files
+- **Systemd**: Manages service lifecycle and automatic restarts
+
+## Step 1: Build Your Astro Site
+
+<Steps>
+
+1. **Install dependencies and build**
+   ```bash
+   npm install
+   npm run build
+   ```
+
+2. **Verify build output**
+   ```bash
+   ls -la dist/
+   ```
+   You should see your static site files in the `dist/` directory.
+
+</Steps>
+
+## Step 2: Prepare Deployment Directory
+
+<Steps>
+
+1. **Create deployment directory**
+   ```bash
+    sudo mkdir -p /etc/docker-compose/<your_site>
+    ```
+
+2. **Copy build files**
+    ```bash
+    sudo cp -r dist /etc/docker-compose/<your_site>/
+    ```
+
+3. **Create Docker files**
+    Create the following files in `/etc/docker-compose/<your_site>/`:
+
+</Steps>
+
+### compose.yaml
+
+```yaml
+services:
+  traefik:
+    image: traefik:latest
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+       - "--certificatesresolvers.letsencrypt.acme.email=<your_email>"
+       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+     ports:
+       - "80:80"
+       - "443:443"
+       - "8080:8080"
+     volumes:
+       - /var/run/docker.sock:/var/run/docker.sock:ro
+       - /etc/docker-compose/<your_site>/letsencrypt:/letsencrypt
+    networks:
+      - web
+    restart: unless-stopped
+
+  web:
+    image: busybox:1.36
+    command: httpd -f -p 80 -h /www
+    volumes:
+       - /etc/docker-compose/<your_site>/dist:/www:ro
+     labels:
+       - "traefik.enable=true"
+       - "traefik.http.routers.<your_site>.rule=Host(`<example.com>`)"
+       - "traefik.http.routers.<your_site>.entrypoints=websecure"
+       - "traefik.http.routers.<your_site>.tls.certresolver=letsencrypt"
+       - "traefik.http.services.<your_site>.loadbalancer.server.port=80"
+    networks:
+      - web
+    restart: unless-stopped
+
+networks:
+  web:
+    driver: bridge
+```
+
+## Step 3: Configure Systemd Service
+
+<Steps>
+
+1. **Create systemd service template**
+   ```bash
+   sudo tee /etc/systemd/system/docker-compose@.service > /dev/null <<EOF
+   [Unit]
+   Description=docker-compose %i service
+   Requires=docker.service network-online.target
+   After=docker.service network-online.target
+
+   [Service]
+   WorkingDirectory=/etc/docker-compose/%i
+   Type=simple
+   TimeoutStartSec=15min
+   Restart=always
+
+   ExecStartPre=/usr/bin/docker compose pull --quiet
+   ExecStartPre=/usr/bin/docker compose build
+
+   ExecStart=/usr/bin/docker compose up --remove-orphans
+
+   ExecStop=/usr/bin/docker compose down --remove-orphans
+
+   ExecReload=/usr/bin/docker compose pull --quiet
+   ExecReload=/usr/bin/docker compose build
+
+   [Install]
+   WantedBy=multi-user.target
+   EOF
+   ```
+
+2. **Reload systemd**
+   ```bash
+   sudo systemctl daemon-reload
+   ```
+
+</Steps>
+
+## Step 4: Configure DNS
+
+<Steps>
+
+1. **Add A record**
+    Point your domain (`<example.com>`) to your server's IP address.
+
+2. **Verify DNS propagation**
+    ```bash
+    nslookup <example.com>
+    ```
+
+</Steps>
+
+## Step 5: Start the Service
+
+<Steps>
+
+1. **Start the service**
+    ```bash
+    sudo systemctl start docker-compose@<your_site>
+    ```
+
+2. **Enable on boot**
+    ```bash
+    sudo systemctl enable docker-compose@<your_site>
+    ```
+
+3. **Check status**
+    ```bash
+    sudo systemctl status docker-compose@<your_site>
+    ```
+
+</Steps>
+
+## Step 6: Verify Deployment
+
+<Steps>
+
+1. **Check Traefik dashboard**
+    Visit `http://<your_server_ip>:8080` to see the Traefik dashboard.
+
+2. **Test HTTPS**
+    Visit `https://<example.com>` - you should see your Astro site with a valid SSL certificate.
+
+3. **Check logs**
+    ```bash
+    sudo systemctl logs docker-compose@<your_site>
+    ```
+
+</Steps>
+
+## Updating Your Site
+
+<Steps>
+
+1. **Build new version**
+   ```bash
+   npm run build
+   ```
+
+2. **Update deployment files**
+    ```bash
+    sudo cp -r dist/* /etc/docker-compose/<your_site>/dist/
+    ```
+
+3. **Reload service**
+    ```bash
+    sudo systemctl reload docker-compose@<your_site>
+    ```
+
+</Steps>
+
+## Troubleshooting
+
+### Service won't start
+```bash
+# Check Docker status
+sudo systemctl status docker
+
+# Check compose logs
+sudo docker compose -f /etc/docker-compose/<your_site>/compose.yaml logs
+```
+
+### SSL certificate issues
+```bash
+# Check Traefik logs
+sudo docker logs traefik
+
+# Verify domain routing
+curl -I https://<example.com>
+```
+
+### Permission issues
+```bash
+# Fix permissions
+sudo chown -R $USER:$USER /etc/docker-compose/<your_site>/
+```
+
+## Security Considerations
+
+- Change the default Traefik dashboard port (8080) in production
+- Use strong passwords for any exposed services
+- Keep Docker and Traefik updated
+- Monitor logs regularly
+
+## Conclusion
+
+You now have a production-ready Astro site deployment with:
+- Automatic SSL certificates
+- Load balancing and routing
+- Service monitoring and auto-restart
+- Easy updates and maintenance
+
+**Next steps:**
+
+* Check the [Traefik documentation](https://doc.traefik.io/traefik/) for advanced configurations
+* Review the [Docker Compose documentation](https://docs.docker.com/compose/) for more options
+* Consider adding monitoring with tools like Prometheus or Grafana
+
+##### License: MIT

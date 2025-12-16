@@ -1,0 +1,33 @@
+---
+title: Welcome
+description: Personal documentation and projects by Samo Blatnik
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import profileImage from '../../../assets/samob.jpeg';
+
+## About Me
+
+Hello! I'm Samo Blatnik, a software developer passionate about technology and innovation.
+
+<div style="text-align: center; margin: 2rem 0;">
+  <img
+    src={profileImage.src}
+    alt="Samo Blatnik"
+    style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 3px solid #e5e7eb;"
+  />
+</div>
+
+## What You'll Find Here
+
+<CardGrid>
+	<Card title="CV" icon="user">
+		Learn more about my education, experience, and skills.
+	</Card>
+	<Card title="Projects" icon="rocket">
+		Discover my software development projects and achievements.
+	</Card>
+	<Card title="Guides" icon="book">
+		Practical guides and tutorials for various technologies.
+	</Card>
+</CardGrid>
