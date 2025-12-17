@@ -1,11 +1,12 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { fileURLToPath, URL } from 'node:url';
 
 // https://astro.build/config
 export default defineConfig({
-  integrations: [
-    starlight({
+	integrations: [
+		starlight({
 			title: 'Samo Blatnik',
 			defaultLocale: 'root',
 			locales: {
@@ -22,10 +23,7 @@ export default defineConfig({
 					lang: 'hr',
 				},
 			},
-			social: [
-				{ icon: 'github', label: 'GitHub', href: 'https://github.com/samob' },
-				{ icon: 'linkedin', label: 'LinkedIn', href: 'https://www.linkedin.com/in/samob/' }
-			],
+
 			components: {
 				ThemeProvider: './src/components/ThemeProvider.astro',
 				LanguageSelect: './src/components/LanguageSelect.astro',
@@ -55,7 +53,7 @@ export default defineConfig({
 								en: 'About Me',
 								hr: 'Biografija',
 							},
-							slug: 'zivljenjepis',
+							slug: 'cv',
 						},
 						{
 							label: 'Osebne lastnosti',
@@ -63,7 +61,7 @@ export default defineConfig({
 								en: 'Personal Qualities',
 								hr: 'Osobni značaj',
 							},
-							slug: 'zivljenjepis/osebne-lastnosti',
+							slug: 'cv/osebne-lastnosti',
 						},
 						{
 							label: 'Tehnične veščine',
@@ -71,7 +69,7 @@ export default defineConfig({
 								en: 'Technical Skills',
 								hr: 'Tehničke vještine',
 							},
-							slug: 'zivljenjepis/tehnicne-vescine',
+							slug: 'cv/tehnicne-vescine',
 						},
 					],
 				},
@@ -88,7 +86,7 @@ export default defineConfig({
 								en: 'Projects Overview',
 								hr: 'Pregled projekata',
 							},
-							slug: 'projekti',
+							slug: 'projects',
 						},
 					],
 				},
@@ -105,7 +103,7 @@ export default defineConfig({
 								en: 'Guides Overview',
 								hr: 'Pregled uputa',
 							},
-							slug: 'navodila',
+							slug: 'guides',
 						},
 						{
 							label: 'Kontekstni inženiring',
@@ -113,7 +111,7 @@ export default defineConfig({
 								en: 'Context Engineering',
 								hr: 'Inženjering konteksta',
 							},
-							slug: 'navodila/context_initial',
+							slug: 'guides/context_initial',
 						},
 						{
 							label: 'Navodila - predloga, zahteve in smernice',
@@ -121,7 +119,7 @@ export default defineConfig({
 								en: 'Tutorial Requirements Template',
 								hr: 'Upute - predložak, zahtjevi i smjernice',
 							},
-							slug: 'navodila/hetzner-tutorial',
+							slug: 'guides/hetzner-tutorial',
 						},
 						{
 							label: 'Implementacija Astro strani s Traefik in Systemd',
@@ -129,11 +127,18 @@ export default defineConfig({
 								en: 'Deploying Astro Site with Traefik and Systemd',
 								hr: 'Implementacija Astro stranice s Traefik i Systemd',
 							},
-							slug: 'navodila/deployment-tutorial',
+							slug: 'guides/deployment-tutorial',
 						},
 					],
 				},
 			],
 		}),
 	],
+	vite: {
+		resolve: {
+			alias: {
+				'~': fileURLToPath(new URL('./src', import.meta.url)),
+			},
+		},
+	},
 });
