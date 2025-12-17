@@ -35,6 +35,10 @@ export default defineConfig({
 				{
 					tag: 'script',
 					content: `document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { window.location.hash = ''; } });`
+				},
+				{
+					tag: 'script',
+					content: `document.addEventListener('click', function(e) { if (e.target.classList.contains('close')) { window.location.hash = ''; } });`
 				}
 			],
 			sidebar: [

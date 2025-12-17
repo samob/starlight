@@ -3,44 +3,64 @@ title: Tehničke vještine
 description: Pregled mojih tehničkih vještina i iskustava u različitim područjima.
 ---
 
+import { Image } from 'astro:assets';
+import terminalChat from '../../../../../assets/ollama-dolphin-terminal-chat.png';
+import dnsExample from '../../../../../assets/siel.png';
+import dockerExample from '../../../../../assets/docker-compose-up.png';
+import blenderExample from '../../../../../assets/Icosphere.png';
+import windsurfExample from '../../../../../assets/windsurf-editor.png';
+
 
 
 ## Uređivači
 
 Moje tehničke vještine uključuju osnovnu upotrebu uređivača VI, poznanstvo s drugim uređivačima kao što su nano, ee i čak starim joe.
 
-<a href="#lightbox1"><img src="/assets/ollama-dolphin-terminal-chat.png" alt="Primjer terminal chat" /></a>
+Osnove uporabe Windsurf GUI kodnog asistenta.
 
-<a href="#" class="lightbox" id="lightbox1">
-  <a href="#" class="close">&times;</a>
-  <a href="#"><img src="/assets/ollama-dolphin-terminal-chat.png" alt="Primjer terminal chat" /></a>
+<a href="#lightbox-windsurf"><Image src={windsurfExample} alt="Primjer Windsurf uređivača" /></a>
+
+<a href="#" class="lightbox" id="lightbox-windsurf">
+  <span class="close">&times;</span>
+  <Image src={windsurfExample} alt="Primjer Windsurf uređivača" />
 </a>
 
 ## Terminal i ljuska
 
 Dugogodišnji sam korisnik terminala koji zna koristiti pajping (odnosim se na | za povezivanje naredbi), radio sam u više $SHELL okruženja (sh, bash, zsh i sada širim znanje o Python virtualnim okruženjima).
 
+<a href="#lightbox-terminal"><Image src={terminalChat} alt="Primjer terminal chat" /></a>
+
+<a href="#" class="lightbox" id="lightbox-terminal">
+  <span class="close">&times;</span>
+  <Image src={terminalChat} alt="Primjer terminal chat" />
+</a>
+
 ## DNS
 
 Imam jaku osnovu u administraciji DNS-a, što je osnovna komponenta u pravilnim zahtjevima za implementaciju web stranica.
 
-<a href="#lightbox2"><img src="/assets/siel.png" alt="Primjer DNS" /></a>
+<a href="#lightbox2"><Image src={dnsExample} alt="Primjer DNS" /></a>
 
 <a href="#" class="lightbox" id="lightbox2">
-  <a href="#" class="close">&times;</a>
-  <a href="#"><img src="/assets/siel.png" alt="Primjer DNS" /></a>
+  <span class="close">&times;</span>
+  <Image src={dnsExample} alt="Primjer DNS" />
 </a>
 
 ## Implementacija
 
 Nekada sam kompajlirao iz izvornog koda, sada koristim Docker i sam hostiram nekoliko projekata na internetu.
 
-<a href="#lightbox3"><img src="/assets/docker-compose-up.png" alt="Primjer Docker compose" /></a>
+<a href="#lightbox3"><Image src={dockerExample} alt="Primjer Docker compose" /></a>
 
 <a href="#" class="lightbox" id="lightbox3">
-  <a href="#" class="close">&times;</a>
-  <a href="#"><img src="/assets/docker-compose-up.png" alt="Primjer Docker compose" /></a>
+  <span class="close">&times;</span>
+  <Image src={dockerExample} alt="Primjer Docker compose" />
 </a>
+
+### Prijelaz na otvorene sustave
+
+Naravno da nisam samo "terminal boy"—oni koji tvrde da se sve može učiniti u tekstualnom načinu su kao oni koji koriste čekić za rješavanje svih problema. Nisam u toj kategoriji. Dovoljno sam star da znam kakav je bio prijelaz s Commodore 64 na današnje 16 threads / 32 cores s 128GB RAM-a i 24TB RAIDZ-3 diskovnih polja "sustave". Jedno je bila ostvarenje snova jednog tinejdžera koji je odrastao u analognoj eri—drugo je današnji "gaming consumer grade" dizajn s kojim se susreću iste generacije. Svi ti sustavi omogućuju pokretanje grafičkih aplikacija, a to je za mene još uvijek primarni način korištenja i interakcije s računalom. Zato sam u prošlosti potrošio znatno vrijeme da napravim prijelaz iz prethodnog "Windows Install" razmišljanja na drugačiji postupak i pristup u otvorenim sustavima. Posebno velik izazov za mene bio je uspješan GUI instalacija na FreeBSD 13.1, koju sam u potpunosti dokumentirao u YouTube videu.
 
 ## Oblak
 
@@ -54,11 +74,11 @@ Koristim Gemini TUI i također alternativu Opencode.
 
 Koristim Blender za stvaranje dizajna Geodesic Dome. Počeo sam s AutoCAD 12 i imam ECDL na 2D i 3D radionicama, ali sam počeo učiti open-source alternativu otkad sam prestao koristiti Windows, i Blender radi vrlo dobro na Linuxu i FreeBSD-u. Moje vještine jedva ogrebu površinu onoga što Blender nudi, ali ipak znam dovoljno da koristim funkcionalnost koja me najviše zanima.
 
-<a href="#lightbox4"><img src="/assets/Icosphere.png" alt="Primjer Blender Icosphere" /></a>
+<a href="#lightbox4"><Image src={blenderExample} alt="Primjer Blender Icosphere" /></a>
 
 <a href="#" class="lightbox" id="lightbox4">
-  <a href="#" class="close">&times;</a>
-  <a href="#"><img src="/assets/Icosphere.png" alt="Primjer Blender Icosphere" /></a>
+  <span class="close">&times;</span>
+  <Image src={blenderExample} alt="Primjer Blender Icosphere" />
 </a>
 
 Preuzmi moje Blender eksperimente:  

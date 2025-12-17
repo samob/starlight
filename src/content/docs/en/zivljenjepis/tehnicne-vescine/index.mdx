@@ -3,44 +3,64 @@ title: Technical Skills
 description: Overview of my technical skills and experiences in various areas.
 ---
 
+import { Image } from 'astro:assets';
+import terminalChat from '../../../../../assets/ollama-dolphin-terminal-chat.png';
+import dnsExample from '../../../../../assets/siel.png';
+import dockerExample from '../../../../../assets/docker-compose-up.png';
+import blenderExample from '../../../../../assets/Icosphere.png';
+import windsurfExample from '../../../../../assets/windsurf-editor.png';
+
 
 
 ## Editors
 
 My technical skills include basic VI editor usage, familiarity with other editors like nano, ee, and even old-school joe.
 
-<a href="#lightbox1"><img src="/assets/ollama-dolphin-terminal-chat.png" alt="Terminal chat example" /></a>
+Basics of using Windsurf GUI coding assistant.
 
-<a href="#" class="lightbox" id="lightbox1">
-  <a href="#" class="close">&times;</a>
-  <a href="#"><img src="/assets/ollama-dolphin-terminal-chat.png" alt="Terminal chat example" /></a>
+<a href="#lightbox-windsurf"><Image src={windsurfExample} alt="Windsurf editor example" /></a>
+
+<a href="#" class="lightbox" id="lightbox-windsurf">
+  <span class="close">&times;</span>
+  <Image src={windsurfExample} alt="Windsurf editor example" />
 </a>
 
 ## Terminal and Shell
 
 I am a long-time terminal user who knows how to use piping (referring to | to chain commands), worked across multiple $SHELL environments (sh, bash, zsh and now expanding knowledge on Python virtual environments).
 
+<a href="#lightbox-terminal"><Image src={terminalChat} alt="Terminal chat example" /></a>
+
+<a href="#" class="lightbox" id="lightbox-terminal">
+  <span class="close">&times;</span>
+  <Image src={terminalChat} alt="Terminal chat example" />
+</a>
+
 ## DNS
 
 I have a strong foundation in DNS administration, a core component in proper web deployment requirements.
 
-<a href="#lightbox2"><img src="/assets/siel.png" alt="DNS example" /></a>
+<a href="#lightbox2"><Image src={dnsExample} alt="DNS example" /></a>
 
 <a href="#" class="lightbox" id="lightbox2">
-  <a href="#" class="close">&times;</a>
-  <a href="#"><img src="/assets/siel.png" alt="DNS example" /></a>
+  <span class="close">&times;</span>
+  <Image src={dnsExample} alt="DNS example" />
 </a>
 
 ## Deployment
 
 I used to compile from scratch, now I use Docker and self-host several projects online.
 
-<a href="#lightbox3"><img src="/assets/docker-compose-up.png" alt="Docker compose example" /></a>
+<a href="#lightbox3"><Image src={dockerExample} alt="Docker compose example" /></a>
 
 <a href="#" class="lightbox" id="lightbox3">
-  <a href="#" class="close">&times;</a>
-  <a href="#"><img src="/assets/docker-compose-up.png" alt="Docker compose example" /></a>
+  <span class="close">&times;</span>
+  <Image src={dockerExample} alt="Docker compose example" />
 </a>
+
+### Transition to Open-Source Systems
+
+Of course, I'm not just a "terminal boy"—those who claim everything can be done in text mode are like those who use a hammer to solve all problems. I'm not in that category. I'm old enough to know what the transition was like from Commodore 64 to today's 16 threads / 32 cores with 128GB of RAM and 24TB RAIDZ-3 disk array "systems". One was the realization of a teenager's dreams who grew up in the analog era—the other is today's "gaming consumer grade" design that the same generations encounter. All these systems enable running graphical applications, and this is still my primary way of using and interacting with the computer. That's why in the past I spent considerable time making the transition from previous "Windows Install" thinking to a different process and approach in open-source systems. A particularly big challenge for me was the successful GUI install on FreeBSD 13.1, which I fully documented in a YouTube video.
 
 ## Cloud
 
@@ -54,11 +74,11 @@ I am using Gemini TUI and also an alternative Opencode.
 
 I use Blender to create Geodesic Dome designs. I started with AutoCAD 12 and have ECDL on 2D and 3D workshops, but I started learning the open-source alternative since I ceased using Windows, and Blender runs very well on Linux and FreeBSD. My skills are barely scratching the surface of what Blender has to offer, but still I know enough to use the functionality that interests me most.
 
-<a href="#lightbox4"><img src="/assets/Icosphere.png" alt="Blender Icosphere example" /></a>
+<a href="#lightbox4"><Image src={blenderExample} alt="Blender Icosphere example" /></a>
 
 <a href="#" class="lightbox" id="lightbox4">
-  <a href="#" class="close">&times;</a>
-  <a href="#"><img src="/assets/Icosphere.png" alt="Blender Icosphere example" /></a>
+  <span class="close">&times;</span>
+  <Image src={blenderExample} alt="Blender Icosphere example" />
 </a>
 
 Download my Blender experiments:  

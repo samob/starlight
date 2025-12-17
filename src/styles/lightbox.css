@@ -9,6 +9,9 @@ a.lightbox {
   background: rgba(0, 0, 0, 0.8);
   z-index: 9999;
   cursor: pointer;
+}
+
+a.lightbox:target {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -16,14 +19,17 @@ a.lightbox {
   color: inherit;
 }
 
-a.lightbox:target {
-  display: flex;
-}
-
 a.lightbox img {
   max-width: 90%;
   max-height: 90%;
   object-fit: contain;
+  margin: 1rem auto;
+}
+
+a[href^="#lightbox"] {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  display: block;
 }
 
 a.lightbox .close {
