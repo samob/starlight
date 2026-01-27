@@ -14,11 +14,6 @@ Ta vodila vas vodi skozi postopek uvajanja vaše Astro Starlight strani na produ
 * Domena (npr. `<example.com>`)
 * Osnovno znanje Linux ukazne vrstice
 
-- Strežnik z Debian/Ubuntu
-- Nameščena Docker in Docker Compose
-- Domena (npr. `vaša-stran.com`)
-- Osnovno znanje Linux ukazne vrstice
-
 ## Pregled arhitekture
 
 ```
@@ -82,15 +77,15 @@ services:
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-       - "--certificatesresolvers.letsencrypt.acme.email=<your_email>"
-       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-     ports:
-       - "80:80"
-       - "443:443"
-       - "8080:8080"
-     volumes:
-       - /var/run/docker.sock:/var/run/docker.sock:ro
-       - /etc/docker-compose/<your_site>/letsencrypt:/letsencrypt
+      - "--certificatesresolvers.letsencrypt.acme.email=<your_email>"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/docker-compose/<your_site>/letsencrypt:/letsencrypt
     networks:
       - web
     restart: unless-stopped
@@ -99,13 +94,13 @@ services:
     image: busybox:1.36
     command: httpd -f -p 80 -h /www
     volumes:
-       - /etc/docker-compose/<your_site>/dist:/www:ro
-     labels:
-       - "traefik.enable=true"
-       - "traefik.http.routers.<your_site>.rule=Host(`<example.com>`)"
-       - "traefik.http.routers.<your_site>.entrypoints=websecure"
-       - "traefik.http.routers.<your_site>.tls.certresolver=letsencrypt"
-       - "traefik.http.services.<your_site>.loadbalancer.server.port=80"
+      - /etc/docker-compose/<your_site>/dist:/www:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.<your_site>.rule=Host(`<example.com>`)"
+      - "traefik.http.routers.<your_site>.entrypoints=websecure"
+      - "traefik.http.routers.<your_site>.tls.certresolver=letsencrypt"
+      - "traefik.http.services.<your_site>.loadbalancer.server.port=80"
     networks:
       - web
     restart: unless-stopped
@@ -275,4 +270,3 @@ Sedaj imate produkcijsko pripravljeno uvajanje Astro strani z:
 * Oglejte si [Docker Compose dokumentacijo](https://docs.docker.com/compose/) za več možnosti
 * Razmislite o dodajanju monitoringa z orodji kot Prometheus ali Grafana
 
-##### Licenca: MIT

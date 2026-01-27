@@ -1,0 +1,90 @@
+---
+title: Technical Skills
+description: Overview of technical skills and experience in various areas of computer use and AI technology.
+---
+
+import Lightbox from '~/components/Lightbox.astro';
+import terminalChat from '~/assets/ollama-dolphin-terminal-chat.png';
+import dnsExample from '~/assets/siel.png';
+import dockerExample from '~/assets/docker-compose-up.png';
+import blenderExample from '~/assets/Icosphere.png';
+import windsurfExample from '~/assets/windsurf-editor.png';
+import automatorAuth from '~/assets/automator-auth-n8n.png';
+import automatorBot from '~/assets/automator-bot-creating-n8n-webhook.png';
+import screenshot1 from '~/assets/Screenshot_20251020_154352.png';
+import screenshot2 from '~/assets/Screenshot_20251023_025116.png';
+import screenshot3 from '~/assets/Screenshot_20251102_020915.png';
+import blenderDomeExample from '~/assets/blender-dome-example.png';
+import face1 from '~/assets/3v-dome-face-select-01.png';
+import face2 from '~/assets/3v-dome-face-select-02.png';
+import face3 from '~/assets/3v-dome-face-select-03.png';
+import face4 from '~/assets/3v-dome-face-select-04.png';
+
+
+
+## Editors
+
+My skills on UNIX/Like systems started with the so-called "Exit VI hell" situation, which most newcomers encounter (as I was at the time). When you first launch this text editor, you have no idea that you need to press `Esc` → `:` → `wq!` to save and exit. (Or press `Shift` + `ZZ` for the same action.) Very unintuitive. But functional. I use the basics needed for successfully modifying configuration files and I'm a proponent of the "plain vanilla is the best" system, where I don't have thousands of configuration files just to make the editor rainbow-colored. I've also learned about various other terminal editors such as nano, ee, and others. So I know how to update that SSH configuration file to log in with a key instead of a password.
+
+Basics of using the Windsurf GUI coding assistant.
+
+<Lightbox id="lightbox-windsurf" src={windsurfExample} alt="Windsurf editor example" />
+
+## Terminal / Shell
+
+I'm a long-time terminal user who knows how to use so-called "piping" (referring to | for chaining commands), and I've worked in multiple `$SHELL` environments (`sh`, `bash`, `zsh`, and now I'm also expanding my knowledge of Python virtual environments `venv`).
+
+<Lightbox id="lightbox-terminal" src={terminalChat} alt="Terminal chat example" />
+
+## DNS
+
+I have a strong foundation in `DNS` administration, which is a core component in properly setting up new websites. I've successfully implemented various `DKIM` records to prevent email spoofing.
+
+<Lightbox id="lightbox2" src={dnsExample} alt="DNS example" />
+
+## Linux and FreeBSD
+
+We used to compile programs from source code with `make install`, which is a lengthy process but offers the ability to configure additional features in the program. Today I use Docker and self-host several projects on the web.
+
+<Lightbox id="lightbox3" src={dockerExample} alt="Docker compose example" />
+
+### Transition to open-source systems
+
+Of course, I'm not just a `terminal boy` — those who claim everything can be done in text mode are like those who use a hammer to solve all problems. I'm not in that category. I'm old enough to know what the transition from `Commodore 64` to today's `16 threads` / `32 cores` with `128GB of RAM` and `24TB` `RAIDZ-3` disk array `"systems"` was like. One was the realization of dreams of that `analog teenager` who grew up in the age of magnetic cassettes — the other is today's "gaming consumer grade" design that the same generations encounter. All these systems enable running graphical applications, and that's still the primary way I use and interact with computers. That's why in the past I spent quite a bit of time making the transition from the previous "Windows Install" thinking to a different process and approach in open-source systems. A particularly big challenge for me was the successful GUI install on FreeBSD 13.1, which I fully documented in a <a href="https://youtu.be/D-u0Lv7APY8?si=IXuGfO7_zS5bcyMm" target="_blank">YouTube video</a>. Fortunately, with the new version 15.1, KDE desktop environment installation is included in the installation process for the first time. This avoids the unpleasant step that newcomers face — manually installing all the necessary packages to run a graphical environment.
+
+## Cloud
+
+For learning and testing in practice, I use Hetzner and <a href="https://www.vultr.com/?ref=9641792-9J" target="_blank">Vultr</a> as cloud server hosting providers. I have some experience with the Google Cloud platform, which offers OAuth authentication and testing of video/image generative services Google Banana and the Gemini assistant. Jupyter Notebook and the .ipynb format are an excellent combination for programming beginners (I consider myself a complete beginner in the Python programming language).
+
+## AI Tools
+
+I quickly realized that using artificial intelligence via API calls is quite an expensive activity. The code assistant continuously uses tokens for every step it performs. The costs of individual calls are usually in the range of a few cents or less, but the steps add up and the loaded credit at the LLM provider quickly disappears. I use Gemini TUI and also the alternative Opencode.
+
+<Lightbox id="lightbox-screenshot1" src={screenshot1} alt="Blender demo 1" />
+<Lightbox id="lightbox-screenshot2" src={screenshot2} alt="Blender demo 2" />
+
+## Automation
+
+I use N8N for automating workflows, creating webhooks, and integrating services.
+
+<Lightbox id="lightbox-n8n-auth" src={automatorAuth} alt="N8N authentication setup" />
+<Lightbox id="lightbox-n8n-webhook" src={automatorBot} alt="N8N webhook creation" />
+<Lightbox id="lightbox-screenshot3" src={screenshot3} alt="Blender demo 3" />
+
+## Blender
+
+I use Blender for creating Geodesic Dome designs. I started with AutoCAD 12 and have an ECDL in 2D and 3D workshops, but I started learning the open-source alternative when I stopped using Windows, and Blender works very well on Linux and FreeBSD. My skills barely scratch the surface of what Blender offers, but I know enough to use the functionality that interests me the most.
+
+Geometry nodes in Blender are a powerful procedural modeling system that enables creating complex shapes and patterns using node-based workflows, without manual mesh editing. This enables efficient generation of repetitive or algorithmic designs, such as geodesic domes or intricate textures. By connecting nodes, I can create dynamic models that automatically adapt to parameter changes, saving time in iterative design. This system is particularly useful for procedural generation of environments, textures, and animations in 3D graphics.
+
+<Lightbox id="lightbox-face1" src={face1} alt="Blender face select 1" />
+<Lightbox id="lightbox-face2" src={face2} alt="Blender face select 2" />
+<Lightbox id="lightbox-face3" src={face3} alt="Blender face select 3" />
+<Lightbox id="lightbox-face4" src={face4} alt="Blender face select 4" />
+
+<Lightbox id="lightbox-blender-dome" src={blenderDomeExample} alt="Blender dome example" />
+<Lightbox id="lightbox4" src={blenderExample} alt="Blender Icosphere example" />
+
+Download my Blender experiments:
+<a href="/assets/3v-dome-9m.blend" download>3v-dome-9m.blend</a>
+<a href="/assets/geometry-nodes.blend" download>geometry-nodes.blend</a>

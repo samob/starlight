@@ -5,18 +5,13 @@ description: Osobna dokumentacija i projekti Sama Blatnika
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 import profileImage from '~/assets/samob.jpeg';
+import ProfileImage from '~/components/ProfileImage.astro';
 
 ## O meni
 
-Pozdrav! Ja sam Samo Blatnik, razvojni programer strastven prema tehnologiji i inovacijama.
+Pozdrav! Ja sam Samo Blatnik, IT podrško osoblje s dugogodišnjim iskustvom servisiranja i održavanja računalničke opreme. Trenutno učim Python programski jezik i eksperimentiram kao razvojni programer programske opreme s pomoću generativne umjetne inteligencije. Moja dugogodišnja strast prema tehnologiji i inovacijama me je dovela u svet umjetne inteligencije i LLM modelova (Large Language Models).
 
-<div style="text-align: center; margin: 2rem 0;">
-  <img
-    src={profileImage.src}
-    alt="Samo Blatnik"
-    style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 3px solid #e5e7eb;"
-  />
-</div>
+<ProfileImage src={profileImage} alt="Samo Blatnik" variant="center" />
 
 ## Što ćete pronaći ovdje
 

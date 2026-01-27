@@ -1,0 +1,35 @@
+---
+import { Image } from 'astro:assets';
+
+interface Props {
+  src: ImageMetadata;
+  alt: string;
+  variant?: 'corner' | 'center';
+}
+
+const { src, alt, variant = 'corner' } = Astro.props;
+const size = variant === 'center' ? 150 : 120;
+---
+
+<div class:list={['profile-image', variant]}>
+  <Image src={src} alt={alt} width={size} height={size} />
+</div>
+
+<style>
+  .profile-image img {
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #e5e7eb;
+  }
+
+  .profile-image.corner {
+    float: right;
+    margin-left: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .profile-image.center {
+    text-align: center;
+    margin: 2rem 0;
+  }
+</style>

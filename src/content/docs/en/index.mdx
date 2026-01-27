@@ -5,18 +5,13 @@ description: Personal documentation and projects by Samo Blatnik
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 import profileImage from '~/assets/samob.jpeg';
+import ProfileImage from '~/components/ProfileImage.astro';
 
 ## About Me
 
-Hello! I'm Samo Blatnik, a software developer passionate about technology and innovation.
+Hello! I'm Samo Blatnik, an IT support personnel with years of experience in servicing and maintaining computer equipment. Currently I'm learning the Python programming language and experimenting as a software developer with the help of generative artificial intelligence. My lifelong passion for technology and innovation has led me into the world of artificial intelligence and LLM models (Large Language Models).
 
-<div style="text-align: center; margin: 2rem 0;">
-  <img
-    src={profileImage.src}
-    alt="Samo Blatnik"
-    style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 3px solid #e5e7eb;"
-  />
-</div>
+<ProfileImage src={profileImage} alt="Samo Blatnik" variant="center" />
 
 ## What You'll Find Here
 
