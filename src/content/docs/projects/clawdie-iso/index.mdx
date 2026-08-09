@@ -1,0 +1,23 @@
+---
+title: Clawdie ISO
+description: Operator USB Image — development surface for Colibri + installer for colibri service on bare metal
+---
+
+## Clawdie ISO — Operator USB Image (Main Project)
+
+Bootable USB image — development surface for Colibri + installer for colibri service on bare metal. This is the most significant project, combining FreeBSD operating system, ZFS, bhyve virtualization, Bastille jails, and Colibri control plane into a single portable artifact.
+
+**Technology Stack:** FreeBSD 15 (quindecim) · XFCE · ZFS RAID1 mirror · bhyve · Bastille jails · pgvector · poudriere · age-encrypted seed partition
+
+**Key Milestones:** [View full build log in wiki →](https://code.smilepowered.org/clawdie/clawdie-iso/src/branch/main/docs)
+
+- Seed partition + age encryption (PIN unlock, no Vaultwarden)
+- Firstboot pipeline: seed decrypt → Pi agent (npm global) → home overlay
+- Colibri-daemon (systemd-style, AUTOSPAWN=YES, PostgreSQL + pgvector)
+- Mother/Hive architecture: colibri-mcp SSH-stdio bridge + tool proxy
+- Poudriere package repo + verified artifacts (build-manifest.json, check_release_gate)
+- Hardware-validated on Valhala (HP ML350p Gen8)
+
+**Current Version:** 0.12.0 (released) → 0.13.0 target (in development: Colibri integration, wiki, OKF)
+
+**Build Host:** Valhala — HP ML350p Gen8, FreeBSD 15, `doas`, poudriere bulk builds

@@ -1,0 +1,155 @@
+---
+title: How I Write Tutorials
+description: My style and structure for writing technical tutorials — clear, step-by-step, no skipping.
+---
+
+This is my personal guide for writing technical tutorials. I use it as a reference when documenting new topics.
+
+## Principles
+
+1. **Don't skip steps** — even if they seem obvious
+2. **The reader doesn't know what you know** — explain context
+3. **Show, don't just tell** — code examples > abstract explanations
+4. **Test your tutorials** — follow your own steps before publishing
+
+## Tutorial Structure
+
+### Introduction
+
+The first paragraph explains:
+- What the reader will achieve
+- Why it's useful
+- What prerequisites they need
+
+**Example:**
+> This tutorial guides you through installing Docker on a Debian server. By the end, you'll have a working Docker environment ready to deploy containers.
+
+### Prerequisites
+
+Clearly state what the reader must have BEFORE starting:
+
+````markdown
+**Prerequisites**
+
+- Server with Debian/Ubuntu
+- Root or sudo access
+- Basic Linux command line knowledge
+````
+
+If there are other tutorials for prerequisites, link to them.
+
+### Steps
+
+Each step:
+- Has a clear title ("Step 1 - Install Docker")
+- Builds on the previous step
+- Includes commands the reader can copy
+- Explains what the command does when needed
+
+**Example structure:**
+
+````markdown
+## Step 1 - Install Docker
+
+First, update the package list:
+
+```bash
+sudo apt update
+```
+
+Then install Docker:
+
+```bash
+sudo apt install docker.io
+```
+
+Verify Docker is working:
+
+```bash
+sudo docker --version
+```
+````
+
+### Sub-steps
+
+For complex steps, use sub-steps:
+
+````markdown
+## Step 2 - Configuration
+
+### Step 2.1 - Create configuration
+...
+
+### Step 2.2 - Set permissions
+...
+````
+
+### Optional Steps
+
+Mark steps that aren't required but are helpful:
+
+````markdown
+## Step 5 - Set up logging (optional)
+
+This step isn't necessary, but helps with debugging...
+````
+
+### Conclusion
+
+At the end:
+- Summarize what the reader achieved
+- Suggest next steps
+- Link to additional resources
+
+````markdown
+## Conclusion
+
+You now have a working Docker environment with automatic startup on reboot.
+
+**Next steps:**
+- [Docker Compose tutorial](/guides/docker-compose/)
+- [Official Docker documentation](https://docs.docker.com/)
+````
+
+## Terminology
+
+I use these placeholders in tutorials:
+
+| Placeholder | Meaning |
+|-------------|---------|
+| `<your_domain>` | Reader's domain (e.g., example.com) |
+| `<your_server_ip>` | Server IP address |
+| `<your_username>` | Username |
+| `<your_email>` | Email address |
+
+**Never** use real IP addresses or passwords in tutorials.
+
+## Code Examples
+
+Always specify the language for syntax highlighting:
+
+````markdown
+```bash
+sudo systemctl start docker
+```
+
+```python
+print("Hello, World!")
+```
+
+```yaml
+services:
+  web:
+    image: nginx
+```
+````
+
+## Screenshots
+
+If needed, save them in an `images/` folder next to the tutorial.
+
+Use screenshots only when text isn't enough — e.g., for GUI steps.
+
+---
+
+*I update this guide as I discover better practices.*

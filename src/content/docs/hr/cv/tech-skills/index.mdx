@@ -1,40 +1,46 @@
 ---
 title: Tehničke vještine
-description: Pregled mojih tehničkih vještina i iskustava u različitim područjima.
+description: Pregled tehničkih vještina i iskustava na različitim područjima korištenja računala i AI tehnologije.
 ---
 
 import Lightbox from '~/components/Lightbox.astro';
-import terminalChat from '~/assets/ollama-dolphin-terminal-chat.png';
-import dnsExample from '~/assets/siel.png';
-import dockerExample from '~/assets/docker-compose-up.png';
-import blenderExample from '~/assets/Icosphere.png';
-import windsurfExample from '~/assets/windsurf-editor.png';
-import automatorAuth from '~/assets/automator-auth-n8n.png';
-import automatorBot from '~/assets/automator-bot-creating-n8n-webhook.png';
-import screenshot1 from '~/assets/Screenshot_20251020_154352.png';
-import screenshot2 from '~/assets/Screenshot_20251023_025116.png';
-import screenshot3 from '~/assets/Screenshot_20251102_020915.png';
-import blenderDomeExample from '~/assets/blender-dome-example.png';
-import face1 from '~/assets/3v-dome-face-select-01.png';
-import face2 from '~/assets/3v-dome-face-select-02.png';
-import face3 from '~/assets/3v-dome-face-select-03.png';
-import face4 from '~/assets/3v-dome-face-select-04.png';
+import {
+  terminalChat,
+  dnsExample,
+  dockerExample,
+  blenderExample,
+  windsurfExample,
+  automatorAuth,
+  automatorBot,
+  screenshot1,
+  screenshot2,
+  screenshot3,
+  blenderDomeExample,
+  face1,
+  face2,
+  face3,
+  face4,
+} from '~/components/ImageRegistry';
 
-
+---
 
 ## Uređivači
 
-Moje tehničke vještine uključuju osnovnu upotrebu uređivača VI, poznanstvo s drugim uređivačima kao što su nano, ee i čak starim joe.
+Moje vještine na UNIX/Like sustavima započele su takozvanim "Exit VI hell" stanjem, situacijom s kojom se susreće većina novih korisnika (kao što sam bio i ja). Naime, kada prvi put pokrenete ovaj tekstualni uređivač, nemate pojma da trebate pritisnuti `Esc` → `:` → `wq!` da biste spremili i zatvorili uređivanje. (Ili pritisnite `Shift` + `ZZ` za istu radnju.) Vrlo neintuitivno. Ali funkcionalno. Koristim osnove potrebne za uspješno prilagođavanje konfiguracijskih datoteka i zagovornik sam "plain vanilla is the best" sustava, gdje nemam tisuće konfiguracijskih datoteka samo da bi uređivač bio duginih boja. Upoznao sam i razne druge terminalne uređivače kao što su nano, ee i ostali. Tako znam ažurirati tu SSH konfiguracijsku datoteku da se mogu prijaviti s ključem umjesto lozinke.
 
-Osnove uporabe Windsurf GUI kodnog asistenta.
+**Osnove korištenja Windsurf GUI kodnog asistenta.**
 
 <Lightbox id="lightbox-windsurf" src={windsurfExample} alt="Primjer Windsurf uređivača" />
 
+---
+
 ## Terminal i ljuska
 
-Dugogodišnji sam korisnik terminala koji zna koristiti pajping (odnosim se na | za povezivanje naredbi), radio sam u više $SHELL okruženja (sh, bash, zsh i sada širim znanje o Python virtualnim okruženjima).
+Dugogodišnji sam korisnik terminala koji zna koristiti pajping (odnosim se na `|` za povezivanje naredbi), radio sam u više `$SHELL` okruženja (sh, bash, zsh i sada širim znanje o Python virtualnim okruženjima).
 
 <Lightbox id="lightbox-terminal" src={terminalChat} alt="Primjer terminal chat" />
+
+---
 
 ## DNS
 
@@ -42,26 +48,36 @@ Imam jaku osnovu u administraciji DNS-a, što je osnovna komponenta u pravilnim 
 
 <Lightbox id="lightbox2" src={dnsExample} alt="Primjer DNS" />
 
+---
+
 ## Linux i FreeBSD
 
-Nekada sam kompajlirao iz izvornog koda, sada koristim Docker i sam hostiram nekoliko projekata na internetu.
+Nekada smo programe kompajlirali iz izvornog koda `make install` što je dugotrajan proces, ali nudi mogućnost konfiguracije dodatnih funkcionalnosti u programu. Danas koristim Docker i sam hostiram nekoliko projekata na internetu.
 
 <Lightbox id="lightbox3" src={dockerExample} alt="Primjer Docker compose" />
 
 ### Prijelaz na otvorene sustave
 
-Naravno da nisam samo "terminal boy"—oni koji tvrde da se sve može učiniti u tekstualnom načinu su kao oni koji koriste čekić za rješavanje svih problema. Nisam u toj kategoriji. Dovoljno sam star da znam kakav je bio prijelaz s Commodore 64 na današnje 16 threads / 32 cores s 128GB RAM-a i 24TB RAIDZ-3 diskovnih polja "sustave". Jedno je bila ostvarenje snova jednog tinejdžera koji je odrastao u analognoj eri—drugo je današnji "gaming consumer grade" dizajn s kojim se susreću iste generacije. Svi ti sustavi omogućuju pokretanje grafičkih aplikacija, a to je za mene još uvijek primarni način korištenja i interakcije s računalom. Zato sam u prošlosti potrošio znatno vrijeme da napravim prijelaz iz prethodnog "Windows Install" razmišljanja na drugačiji postupak i pristop u otvorenim sustavima. Posebno velik izazov za mene bio je uspješan GUI instalacija na FreeBSD 13.1, koju sam u potpunosti dokumentirao u <a href="https://youtu.be/D-u0Lv7APY8?si=IXuGfO7_zS5bcyMm" target="_blank">YouTube videu</a>. Na sreću je s novom verzijom 15.1 prvi put u procesu instalacije uključena instalacija KDE grafičkog okruženja. S time se izbjegavamo neugodan korak s kojim se susreću početnici a inače ručna instalacija svih potrebnih paketa za pokretanje grafičkog okruženja.
+Naravno da nisam samo "terminal boy"—oni koji tvrde da se sve može učiniti u tekstualnom načinu su kao oni koji koriste čekić za rješavanje svih problema. Nisam u toj kategoriji. Dovoljno sam star da znam kakav je bio prijelaz s Commodore 64 na današnje 16 threads / 32 cores s 128GB RAM-a i 24TB RAIDZ-3 diskovnih polja "sustave". Jedno je bila ostvarenje snova jednog tinejdžera koji je odrastao u analognoj eri—drugo je današnji "gaming consumer grade" dizajn s kojim se susreću iste generacije. Svi ti sustavi omogućuju pokretanje grafičkih aplikacija, a to je za mene još uvijek primarni način korištenja i interakcije s računalom. Zato sam u prošlosti potrošio znatno vrijeme da napravim prijelaz iz prethodnog "Windows Install" razmišljanja na drugačiji postupak i pristup u otvorenim sustavima. Posebno velik izazov za mene bio je uspješan GUI instalacija na FreeBSD 13.1, koju sam u potpunosti dokumentirao u <a href="https://youtu.be/D-u0Lv7APY8?si=IXuGfO7_zS5bcyMm" target="_blank">YouTube videu</a>. Na sreću je s novom verzijom 15.1 prvi put u procesu instalacije uključena instalacija KDE grafičkog okruženja. S time se izbjegavamo neugodan korak s kojim se susreću početnici a inače ručna instalacija svih potrebnih paketa za pokretanje grafičkog okruženja.
+
+---
 
 ## Oblak
 
 Za učenje i testiranje u praksi koristim Hetzner i <a href="https://www.vultr.com/?ref=9641792-9J" target="_blank">Vultr</a> kao pružatelje usluge u oblaku. Imam neko iskustvo s Google Cloud platformom koja nudi OAuth autentikaciju i isprobavanje video/image generativnih usluga Google Banana i Gemini asistenta. Jupyter Notebook i .ipynb format su odlična kombinacija za početnike u programiranju (sebe smatram za potpunog početnika u Python programskom jeziku)
 
+---
+
 ## AI alati
 
-Brzo sam shvatio da je korištenje umjetne inteligence putem API poziva prilično skupa aktivnost. Kodni asistent trajno koristi tokene za svaki korak koji izvrši. Troškovi pojedinačnih poziva su obično u rasponu od nekoliko centi ili manje, ali se koraci nakupljaju i učitani kredit kod LLM pružatelja brzo nestane. Koristim Gemini TUI i također alternativu Opencode.
+Brzo sam shvatio da je korištenje umjetne inteligencije putem API poziva prilično skupa aktivnost. Kodni asistent trajno koristi tokene za svaki korak koji izvrši. Troškovi pojedinačnih poziva su obično u rasponu od nekoliko centi ili manje, ali se koraci nakupljaju i učitani kredit kod LLM pružatelja brzo nestane. Koristim Gemini TUI i također alternativu Opencode.
 
-<Lightbox id="lightbox-screenshot1" src={screenshot1} alt="Blender demo 1" />
-<Lightbox id="lightbox-screenshot2" src={screenshot2} alt="Blender demo 2" />
+**Primjeri korištenja AI alata u praksi:**
+
+<Lightbox id="lightbox-screenshot1" src={screenshot1} alt="AI demo 1" />
+<Lightbox id="lightbox-screenshot2" src={screenshot2} alt="AI demo 2" />
+
+---
 
 ## Automatizacija
 
@@ -69,22 +85,60 @@ Koristim N8N za automatizaciju radnih tokova, stvaranje webhooka i integraciju u
 
 <Lightbox id="lightbox-n8n-auth" src={automatorAuth} alt="N8N authentication setup" />
 <Lightbox id="lightbox-n8n-webhook" src={automatorBot} alt="N8N webhook creation" />
-<Lightbox id="lightbox-screenshot3" src={screenshot3} alt="Blender demo 3" />
+<Lightbox id="lightbox-screenshot3" src={screenshot3} alt="AI demo 3" />
+
+---
 
 ## Blender
 
-Koristim Blender za stvaranje dizajna Geodesic Dome. Počeo sam s AutoCAD 12 i imam ECDL na 2D i 3D radionicama, ali sam počeo učiti open-source alternativu otkad sam prestao koristiti Windows, i Blender radi vrlo dobro na Linuxu i FreeBSD-u. Moje vještine jedva ogrebu površinu onoga što Blender nudi, ali ipak znam dovoljno da koristim funkcionalnost koja me najviše zanima.
+Koristim Blender za stvaranje dizajna **Geodesic Dome**. Počeo sam s AutoCAD 12 i imam ECDL na 2D i 3D radionicama, ali sam počeo učiti open-source alternativu otkad sam prestao koristiti Windows, i Blender radi vrlo dobro na Linuxu i FreeBSD-u. Moje vještine jedva ogrebu površinu onoga što Blender nudi, ali ipak znam dovoljno da koristim funkcionalnost koja me najviše zanima.
 
-Geometry nodes u Blenderu su moćan sustav proceduralnog modeliranja koji omogućuje stvaranje složenih oblika i uzoraka koristeći node-based radne tokove, bez ručnog uređivanja mreže. To omogućuje učinkovitu generaciju ponavljajućih ili algoritamskih dizajna, poput geodetskih kupola ili složenih tekstura. Povezivanjem čvorova mogu stvoriti dinamičke modele koji se automatski prilagođavaju promjenama parametara, štedeći vrijeme u iterativnom dizajnu. Ovaj sustav je posebno koristan za proceduralnu generaciju okolina, tekstura i animacija u 3D grafici.
+**Geometry nodes** u Blenderu su moćan sustav proceduralnog modeliranja koji omogućuje stvaranje složenih oblika i uzoraka koristeći node-based radne tokove, bez ručnog uređivanja mreže. To omogućuje učinkovitu generaciju ponavljajućih ili algoritamskih dizajna, poput geodetskih kupola ili složenih tekstura. Povezivanjem čvorova mogu stvoriti dinamičke modele koji se automatski prilagođavaju promjenama parametara, štedeći vrijeme u iterativnom dizajnu. Ovaj sustav je posebno koristan za proceduralnu generaciju okolina, tekstura i animacija u 3D grafici.
+
+**Odabir ploha (Face Selection) za geodetsku kupolu:**
 
 <Lightbox id="lightbox-face1" src={face1} alt="Blender face select 1" />
 <Lightbox id="lightbox-face2" src={face2} alt="Blender face select 2" />
 <Lightbox id="lightbox-face3" src={face3} alt="Blender face select 3" />
 <Lightbox id="lightbox-face4" src={face4} alt="Blender face select 4" />
 
+**Proceduralni primjer geodetske kupole s Geometry Nodes:**
+
 <Lightbox id="lightbox-blender-dome" src={blenderDomeExample} alt="Blender dome example" />
 <Lightbox id="lightbox4" src={blenderExample} alt="Primjer Blender Icosphere" />
 
-Preuzmi moje Blender eksperimente:
-<a href="/assets/3v-dome-9m.blend" download>3v-dome-9m.blend</a>
-<a href="/assets/geometry-nodes.blend" download>geometry-nodes.blend</a>
+---
+
+### 📥 Preuzimanje Blender datoteka
+
+<div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;">
+  <a href="/assets/3v-dome-9m.blend" download class="sl-link-button primary" style="align-self: flex-start;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+    3v-dome-9m.blend (920 KB)
+  </a>
+  <a href="/assets/geometry-nodes.blend" download class="sl-link-button primary" style="align-self: flex-start;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+    geometry-nodes.blend (860 KB)
+  </a>
+</div>
+
+---
+
+## Infrastruktura i alati (pregled)
+
+| Kategorija | Alati / Tehnologije | Iskustvo |
+|------------|---------------------|----------|
+| **OS** | Debian, FreeBSD, Linux | 15+ godina, daily driver |
+| **Terminal** | tmux, zsh, bash, SSH | Napredno |
+| **Kontejnerizacija** | Docker, Docker Compose | Produkcijsko gostovanje |
+| **Reverse Proxy** | Traefik, Nginx | SSL, automatski certifikati |
+| **Automatizacija** | N8N, cron, systemd | Webhooks, workflows |
+| **AI/ML** | Ollama, Gemini, Opencode, Gemini TUI | Lokalni modeli, API |
+| **3D** | Blender (Geometry Nodes) | Proceduralno modeliranje |
+| **Uređivači** | vi/vim, nano, Windsurf, VS Code | Konfiguracijske datoteke |
+| **DNS/Email** | DKIM, SPF, DMARC | Administracija domena |
+| **Oblak** | Hetzner, Vultr, Google Cloud | VPS, GPU instance |
+
+---
+
+*Ažurirano: 2026 | Vještine se neprestano razvijaju kroz praksu i eksperimentiranje.*

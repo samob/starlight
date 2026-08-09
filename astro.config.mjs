@@ -30,6 +30,9 @@ export default defineConfig({
             ThemeSelect: './src/components/ThemeSelect.astro',
             LanguageSelect: './src/components/LanguageSelect.astro',
         },
+        customCss: [
+            './src/styles/clickable-cards.css',
+        ],
         sidebar: [
             {
                 label: 'Življenjepis',
@@ -52,7 +55,7 @@ export default defineConfig({
                             en: 'Personal Qualities',
                             hr: 'Osobni značaj',
                         },
-                        slug: 'cv/osebne-lastnosti',
+                        slug: 'cv/personal-qualities',
                     },
                     {
                         label: 'Tehnične veščine',
@@ -78,6 +81,46 @@ export default defineConfig({
                             hr: 'Pregled projekata',
                         },
                         slug: 'projects',
+                    },
+                    {
+                        label: 'Clawdie ISO',
+                        translations: {
+                            en: 'Clawdie ISO',
+                            hr: 'Clawdie ISO',
+                        },
+                        slug: 'projects/clawdie-iso',
+                    },
+                    {
+                        label: 'Colibri',
+                        translations: {
+                            en: 'Colibri',
+                            hr: 'Colibri',
+                        },
+                        slug: 'projects/colibri',
+                    },
+                    {
+                        label: 'Herdr',
+                        translations: {
+                            en: 'Herdr',
+                            hr: 'Herdr',
+                        },
+                        slug: 'projects/herdr',
+                    },
+                    {
+                        label: 'Zot Agent Harness',
+                        translations: {
+                            en: 'Zot Agent Harness',
+                            hr: 'Zot Agent Harness',
+                        },
+                        slug: 'projects/zot',
+                    },
+                    {
+                        label: 'Pi Harness',
+                        translations: {
+                            en: 'Pi Harness',
+                            hr: 'Pi Harness',
+                        },
+                        slug: 'projects/pi',
                     },
                 ],
             },
@@ -127,6 +170,39 @@ export default defineConfig({
                             hr: 'Implementacija Astro stranice s Traefik i Systemd',
                         },
                         slug: 'guides/deployment-tutorial',
+                    },
+                ],
+            },
+            {
+                label: 'Wiki',
+                translations: {
+                    en: 'Wiki',
+                    hr: 'Wiki',
+                },
+                items: [
+                    {
+                        label: 'Colibri Wiki',
+                        translations: {
+                            en: 'Colibri Wiki',
+                            hr: 'Colibri Wiki',
+                        },
+                        slug: 'wiki',
+                    },
+                    {
+                        label: 'Google OKF (Open Knowledge Format)',
+                        translations: {
+                            en: 'Google OKF (Open Knowledge Format)',
+                            hr: 'Google OKF (Open Knowledge Format)',
+                        },
+                        slug: 'wiki/okf',
+                    },
+                    {
+                        label: 'Abbreviations Index',
+                        translations: {
+                            en: 'Abbreviations Index',
+                            hr: 'Abbreviations Index',
+                        },
+                        slug: 'wiki/abbreviations',
                     },
                 ],
             },

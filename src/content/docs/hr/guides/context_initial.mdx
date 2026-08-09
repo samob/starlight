@@ -1,0 +1,289 @@
+---
+title: Predložak za inženjering konteksta
+description: Sveobuhvatni predložak za početak s inženjeringom konteksta - disciplina inženjeringa konteksta za AI kodne asistente kako bi imali informacije potrebne za dovršetak posla od početka do kraja.
+---
+
+Sveobuhvatni predložak za početak s inženjeringom konteksta - disciplina inženjeringa konteksta za AI kodne asistente kako bi imali informacije potrebne za dovršetak posla od početka do kraja.
+
+> **Inženjering konteksta je 10x bolji od prompt inženjeringa i 100x bolji od vibe codinga.**
+
+## 🚀 Brzi početak
+
+```bash
+# 1. Klonirajte ovaj predložak
+git clone https://github.com/coleam00/Context-Engineering-Intro.git
+cd Context-Engineering-Intro
+
+# 2. Postavite pravila projekta (neobavezno - predložak je pružen)
+# Uredite CLAUDE.md za dodavanje svojih pravila specifičnih za projekt
+
+# 3. Dodajte primjere (vrlo preporučljivo)
+# Stavite relevantne primjere koda u mapu examples/
+
+# 4. Kreirajte svoj početni zahtjev za funkcionalnost
+# Uredite INITIAL.md sa svojim zahtjevima za funkcionalnost
+
+# 5. Generirajte sveobuhvatni PRP (Product Requirements Prompt)
+# U Claude Code, pokrenite:
+/generate-prp INITIAL.md
+
+# 6. Izvršite PRP za implementaciju svoje funkcionalnosti
+# U Claude Code, pokrenite:
+/execute-prp PRPs/your-feature-name.md
+```
+
+## Što je inženjering konteksta?
+
+Inženjering konteksta predstavlja paradigmalnu promjenu u odnosu na tradicionalni prompt inženjering:
+
+### Prompt Inženjering vs Inženjering Konteksta
+
+**Prompt Inženjering:**
+- Fokusira se na pametne formulacije i specifične fraze
+- Ograničen na to kako formulirate zadatak
+- Kao da nekome date ljepljivu bilješku (Sticky Note)
+
+**Inženjering Konteksta:**
+- Potpun sustav za pružanje sveobuhvatnog konteksta
+- Uključuje dokumentaciju, primjere, pravila, obrasce i validaciju
+- Kao pisanje potpunog scenarija sa svim detaljima
+
+### Zašto je Inženjering Konteksta Važan
+
+1. **Smanjuje AI neuspjehe**: Većina neuspjeha agenata nisu neuspjehi modela - to su neuspjehi konteksta
+2. **Osigurava dosljednost**: AI slijedi obrasce i konvencije vašeg projekta
+3. **Omogućuje složene funkcionalnosti**: AI može rukovati višestručnim implementacijama s pravilnim kontekstom
+4. **Samokorigiranje**: Validacijske petlje omogućuju AI da popravi vlastite greške
+
+## Struktura Predloška
+
+```
+context-engineering-intro/
+ ├── .claude/
+ │   ├── commands/
+ │   │   ├── generate-prp.md    # Generira sveobuhvatne PRP-ove
+ │   │   └── execute-prp.md     # Izvršava PRP-ove za implementaciju funkcionalnosti
+ │   └── settings.local.json    # Claude Code dozvole
+ ├── PRPs/
+ │   ├── templates/
+ │   │   └── prp_base.md       # Osnovni predložak za PRP-ove
+ │   └── EXAMPLE_multi_agent_prp.md  # Primjer potpunog PRP-a
+ ├── examples/                  # Vaši primjeri koda (kritično!)
+ ├── CLAUDE.md                 # Globalna pravila za AI asistenta
+ ├── INITIAL.md               # Predložak za zahtjeve funkcionalnosti
+ ├── INITIAL_EXAMPLE.md       # Primjer zahtjeva za funkcionalnost
+ └── README.md                # Ova datoteka
+```
+
+Ovaj predložak se ne fokusira na RAG i alate s inženjeringom konteksta jer imam PUNO više za to uskoro. ;)
+
+## Vodič Korak po Korak
+
+### 1. Postavite Globalna Pravila (CLAUDE.md)
+
+Datoteka `CLAUDE.md` sadrži pravila na razini projekta kojim će AI asistent slijediti u svakom razgovoru. Predložak uključuje:
+
+- **Svjesnost o projektu**: Čitanje planirajućih dokumenata, provjeravanje zadataka
+- **Struktura koda**: Ograničenja veličine datoteka, organizacija modula
+- **Zahtjevi testiranja**: Obrasci jediničnih testova, očekivanja pokrivenosti
+- **Stilske konvencije**: Jezične preferencije, pravila formatiranja
+- **Standardi dokumentacije**: Formatima docstringova, prakse komentiranja
+
+**Možete koristiti pruženi predložak kakav je ili prilagoditi za svoj projekt.**
+
+### 2. Kreirajte Svoj Početni Zahtjev za Funkcionalnost
+
+Uredite `INITIAL.md` da opišete što želite izgraditi:
+
+```markdown
+## FUNKCIONALNOST:
+[Opišite što želite izgraditi - budite specifični o funkcionalnosti i zahtjevima]
+
+## PRIMJERI:
+[Navedite sve primjerne datoteke u mapi examples/ i objasnite kako bi se trebale koristiti]
+
+## DOKUMENTACIJA:
+[Uključite poveznice na relevantnu dokumentaciju, API-je ili resurse MCP servera]
+
+## DRUGE RAZMATRANJA:
+[Navedite zamke, specifične zahtjeve ili stvari koje AI asistenti često propuštaju]
+```
+
+**Pogledajte `INITIAL_EXAMPLE.md` za potpun primjer.**
+
+### 3. Generirajte PRP
+
+PRP-ovi (Product Requirements Prompts) su sveobuhvatni nacrti implementacije koji uključuju:
+
+- Potpun kontekst i dokumentaciju
+- Korake implementacije s validacijom
+- Obrasci rukovanja greškama
+- Zahtjevi testiranja
+
+Slični su PRD-ovima (Product Requirements Documents) ali su craftanije specifično za uputu AI asistenta za kodiranje.
+
+Pokrenite u Claude Code:
+```bash
+/generate-prp INITIAL.md
+```
+
+**Napomena:** Kosje naredbe su custom naredbe definirane u `.claude/commands/`. Možete vidjeti njihovu implementaciju:
+- `.claude/commands/generate-prp.md` - Pogledajte kako istražuje i kreira PRP-ove
+- `.claude/commands/execute-prp.md` - Pogledajte kako implementira funkcionalnosti iz PRP-ova
+
+Varijabla `$ARGUMENTS` u ovim naredbama prima što god proslijedite nakon imena naredbe (npr. `INITIAL.md` ili `PRPs/your-feature.md`).
+
+Ova naredba će:
+1. Pročitati vaš zahtjev za funkcionalnost
+2. Istražiti bazu koda za obrasce
+3. Pretražiti relevantnu dokumentaciju
+4. Kreirati sveobuhvatni PRP u `PRPs/your-feature-name.md`
+
+### 4. Izvršite PRP
+
+Nakon generiranja, izvršite PRP za implementaciju vaše funkcionalnosti:
+
+```bash
+/execute-prp PRPs/your-feature-name.md
+```
+
+AI kodni asistent će:
+1. Pročitati sav kontekst iz PRP-a
+2. Kreirati detaljan plan implementacije
+3. Izvršiti svaku komponentu s validacijom
+4. Pokrenuti testove i popraviti bilo kakve probleme
+5. Osigurati da su svi kriteriji uspjeha ispunjeni
+
+## Pisanje Učinkovitih INITIAL.md Datoteka
+
+### Ključne Sekcije Objasnjene
+
+**FUNKCIONALNOST**: Budite specifični i sveobuhvatni
+- ❌ "Izgradi web scraper"
+- ✅ "Izgradi asinkroni web scraper koristeći BeautifulSoup koji izvlači podatke o proizvodima s e-commerce stranica, rukuje ograničenjem brzine (rate limiting) i sprema rezultate u PostgreSQL"
+
+**PRIMJERI**: Iskoristite mapu examples/
+- Stavite relevantne obrasce koda u `examples/`
+- Referencirajte specifične datoteke i obrasce koje treba slijediti
+- Objasnite koje aspekte treba oponašati
+
+**DOKUMENTACIJA**: Uključite sve relevantne resurse
+- URL-ovi dokumentacije API-ja
+- Vodiči za biblioteke
+- Dokumentacija MCP servera
+- Sheme baze podataka
+
+**DRUGE RAZMATRANJA**: Snimite važne detalje
+- Zahtjevi autentikacije
+- Ograničenja brzine ili kvote
+- Česte zamke
+- Zahtjevi performansi
+
+## PRP Radni Tijek
+
+### Kako /generate-prp Radi
+
+Naredba slijedi ovaj proces:
+
+1. **Faza Istraživanja**
+   - Analizira vašu bazu koda za obrasce
+   - Traži slične implementacije
+   - Identificira konvencije koje treba slijediti
+
+2. **Prikupljanje Dokumentacije**
+   - Dohvaća relevantnu dokumentaciju API-ja
+   - Uključuje dokumentaciju biblioteka
+   - Dodaje zamke i specifičnosti
+
+3. **Kreiranje Nacrta**
+   - Kreira nacrt implementacije korak po korak
+   - Uključuje validacijske prolaze
+   - Dodaje zahtjeve testiranja
+
+4. **Provjera Kakvoće**
+   - Ocjenjuje razinu pouzdanosti (1-10)
+   - Osigurava da je sav kontekst uključen
+
+### Kako /execute-prp Radi
+
+1. **Učitavanje Konteksta**: Čita cijeli PRP
+2. **Planiranje**: Kreira detaljan popis zadataka koristeći TodoWrite
+3. **Izvršenje**: Implementira svaku komponentu
+4. **Validacija**: Pokreće testove i linting
+5. **Iteracija**: Poprava bilo kakve pronađene probleme
+6. **Dovršetak**: Osigurava da su svi zahtjevi ispunjeni
+
+Pogledajte `PRPs/EXAMPLE_multi_agent_prp.md` za potpun primjer onoga što se generira.
+
+## Učinkovito Korištenje Primjera
+
+Mapa `examples/` je **kritična** za uspjeh. AI kodni asistenti rade puno bolje kad mogu vidjeti obrasce koje slijede.
+
+### Što Uključiti u Primjere
+
+1. **Obrasci Strukture Koda**
+   - Kako organizirate module
+   - Konvencije import-a
+   - Obrasci klasa/funkcija
+
+2. **Obrasci Testiranja**
+   - Struktura testnih datoteka
+   - Pristopi mockiranja
+   - Stilovi tvrdnji
+
+3. **Obrasci Integracije**
+   - Implementacije API klijenta
+   - Veze baze podataka
+   - Tokovi autentikacije
+
+4. **Obrasci CLI-ja**
+   - Raščlanjivanje argumenata
+   - Formatiranje izlaza
+   - Rukovanje greškama
+
+### Struktura Primjera
+
+```
+examples/
+ ├── README.md           # Objasnjuje što svaki primjer demonstrira
+ ├── cli.py             # Obrasci implementacije CLI-ja
+ ├── agent/             # Obrasci arhitekture agenata
+ │   ├── agent.py      # Obrasci kreiranja agenata
+ │   ├── tools.py      # Obrasci implementacije alata
+ │   └── providers.py  # Obrasci višestrukih pružatelja
+ └── tests/            # Obrasci testiranja
+     ├── test_agent.py # Obrasci jediničnih testova
+     └── conftest.py   # Konfiguracija Pytest-a
+```
+
+## Najbolje Prakse
+
+### 1. Budite Eksplicitni u INITIAL.md
+- Nemojte pretpostavljati da AI zna vaše preferencije
+- Uključite specifične zahtjeve i ograničenja
+- Referencirajte primjere slobodno
+
+### 2. Pružite Sveobuhvatne Primjere
+- Više primjera = bolja implementacija
+- Pokažite i što učiniti I što NE učiniti
+- Uključite obrasce rukovanja greškama
+
+### 3. Koristite Validacijske Prolaze
+- PRP-ovi uključuju testne naredbe koje moraju proći
+- AI će iterirati dok sve validacije ne prođu
+- To osigurava radivi kod kod prvog pokušaja
+
+### 4. Iskoristite Dokumentaciju
+- Uključite službenu dokumentaciju API-ja
+- Dodajte resurse MCP servera
+- Referencirajte specifične odjeljke dokumentacije
+
+### 5. Prilagodite CLAUDE.md
+- Dodajte svoje konvencije
+- Uključite pravila specifične za projekt
+- Definirajte standarde kodiranja
+
+## Resursi
+
+- [Claude Code Dokumentacija](https://docs.anthropic.com/en/docs/claude-code)
+- [Najbolje prakse inženjeringa konteksta](https://www.philschmid.de/context-engineering)

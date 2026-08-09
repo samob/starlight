@@ -1,0 +1,185 @@
+---
+title: Docker Desktop na Debian 13
+description: Korak po korak vodič za instalaciju Docker Desktop na Debian 13 s pravilnim upravljanjem vjerodajnicama.
+---
+
+Korak po korak vodič za instalaciju Docker Desktop na Debian 13 s pravilnim upravljanjem vjerodajnicama.
+
+## Preduvjeti
+
+- Debian 13 (ili 12) sustav
+- Internet konekcija
+- Pristup terminalu
+
+## Korak 1: Dodaj Dockerov službeni repozitorij
+
+Prvo instaliraj potrebne ovisnosti:
+
+```bash
+sudo apt update
+sudo apt install ca-certificates curl
+```
+
+Kreiraj mapu za ključeve i dodaj Dockerov GPG ključ:
+
+```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+```
+
+Dodaj Dockerov službeni repozitorij:
+
+```bash
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+```
+
+## Korak 2: Ukloni konfliktne pakete
+
+Ako imaš Docker instaliran iz Debianovih repozitorija, mogu postojati konfliktni paketi. Ukloni ih:
+
+```bash
+sudo apt remove docker-buildx docker-compose
+```
+
+## Korak 3: Instaliraj Docker CE CLI
+
+Ažuriraj popis paketa i instaliraj službeni Docker CLI:
+
+```bash
+sudo apt update
+sudo apt install docker-ce-cli
+```
+
+Očisti nekorištene ovisnosti:
+
+```bash
+sudo apt autoremove
+```
+
+## Korak 4: Preuzmi i instaliraj Docker Desktop
+
+Preuzmi Docker Desktop DEB paket sa [Docker Desktop stranice](https://www.docker.com/products/docker-desktop) ili koristeći wget:
+
+```bash
+cd ~/Downloads
+wget https://desktop.docker.com/linux/main/amd64/docker-desktop-amd64.deb
+```
+
+Instaliraj Docker Desktop:
+
+```bash
+sudo apt install ./docker-desktop-amd64.deb
+```
+
+## Korak 5: Postavi GPG ključ za upravljanje vjerodajnicama
+
+Generiraj GPG ključ (potreban za sigurno spremanje vjerodajnica):
+
+```bash
+gpg --generate-key
+```
+
+Slijedi upute za unos podataka. Ispis će pokazati tvoj GPG ključ ID, koji izgleda ovako:
+
+```
+E64B253FC0A9C047E6FAD55E8B1D86868A885711
+```
+
+Spremi ovaj ključ ID — trebat će ti u sljedećem koraku.
+
+## Korak 6: Konfiguriraj Docker vjerodajnice
+
+Uredi Docker config datoteku:
+
+```bash
+nano ~/.docker/config.json
+```
+
+Promijeni `"credsStore": "desktop"` u `"credsStore": "pass"`:
+
+```json
+{
+    "auths": {},
+    "credsStore": "pass",
+    "currentContext": "desktop-linux"
+}
+```
+
+Spremi datoteku (Ctrl+O, Enter, Ctrl+X u nano).
+
+## Korak 7: Inicijaliziraj Pass upravitelj lozinki
+
+Inicijaliziraj `pass` sa svojim GPG ključem (zamijeni sa svojim ključem ID):
+
+```bash
+pass init E64B253FC0A9C047E6FAD55E8B1D86868A885711
+```
+
+Provjeri da je `docker-credential-pass` instaliran:
+
+```bash
+which docker-credential-pass
+```
+
+Trebalo bi pokazati `/usr/bin/docker-credential-pass`.
+
+## Korak 8: Pokreni Docker Desktop
+
+Kao obični korisnik (ne root), pokreni Docker Desktop:
+
+```bash
+systemctl --user start docker-desktop
+```
+
+Provjeri da radi:
+
+```bash
+systemctl --user status docker-desktop
+```
+
+## Korak 9: Prijava u Docker
+
+Otvori Docker Desktop iz izbornika aplikacija (pod "Development" u KDE). Klikni "G" ikonu za prijavu s Google računom i završi postupak autentifikacije.
+
+Tvoje vjerodajnice će sada biti sigurno spremljene koristeći `pass` i tvoj GPG ključ.
+
+## Korak 10: Provjeri instalaciju
+
+Testiraj da Docker radi:
+
+```bash
+docker version
+docker run hello-world
+```
+
+## Opcionalno: Omogući Docker Desktop pri pokretanju
+
+Za automatsko pokretanje Docker Desktop pri prijavi:
+
+```bash
+systemctl --user enable docker-desktop
+```
+
+## Rješavanje problema
+
+**Docker Desktop se ne pokreće:**
+- Uvjeri se da pokrećeš naredbe kao obični korisnik, ne root
+- Provjeri status sa: `systemctl --user status docker-desktop`
+
+**Prijava ne uspijeva:**
+- Provjeri da je `pass` inicijaliziran: `pass`
+- Provjeri GPG ključ: `gpg --list-keys`
+- Ponovno pokreni Docker Desktop: `systemctl --user restart docker-desktop`
+
+**Greške dozvola:**
+- Dodaj korisnika u docker grupu: `sudo usermod -aG docker $USER`
+- Odjavi se i ponovno prijavi da promjene stupe na snagu
+
+## Reference
+
+- [Docker Desktop dokumentacija](https://docs.docker.com/desktop/)
+- [Docker Desktop upravljanje vjerodajnicama za Linux](https://docs.docker.com/desktop/setup/sign-in/#credentials-management-for-linux-users)

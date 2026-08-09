@@ -1,0 +1,185 @@
+---
+title: Docker Desktop on Debian 13
+description: Step-by-step guide to installing Docker Desktop on Debian 13 with proper credential management.
+---
+
+A step-by-step guide to installing Docker Desktop on Debian 13 with proper credential management.
+
+## Prerequisites
+
+- Debian 13 (or 12) system
+- Internet connection
+- Terminal access
+
+## Step 1: Add Docker's Official Repository
+
+First, install required dependencies:
+
+```bash
+sudo apt update
+sudo apt install ca-certificates curl
+```
+
+Create the keyrings directory and add Docker's GPG key:
+
+```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+```
+
+Add Docker's official repository:
+
+```bash
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+```
+
+## Step 2: Remove Conflicting Packages
+
+If you have Docker installed from Debian's repositories, there may be conflicting packages. Remove them:
+
+```bash
+sudo apt remove docker-buildx docker-compose
+```
+
+## Step 3: Install Docker CE CLI
+
+Update your package list and install the official Docker CLI:
+
+```bash
+sudo apt update
+sudo apt install docker-ce-cli
+```
+
+Clean up any unused dependencies:
+
+```bash
+sudo apt autoremove
+```
+
+## Step 4: Download and Install Docker Desktop
+
+Download the Docker Desktop DEB package from the [Docker Desktop release page](https://www.docker.com/products/docker-desktop) or using wget:
+
+```bash
+cd ~/Downloads
+wget https://desktop.docker.com/linux/main/amd64/docker-desktop-amd64.deb
+```
+
+Install Docker Desktop:
+
+```bash
+sudo apt install ./docker-desktop-amd64.deb
+```
+
+## Step 5: Set Up GPG Key for Credential Management
+
+Generate a GPG key (required for secure credential storage):
+
+```bash
+gpg --generate-key
+```
+
+Follow the prompts to enter your details. The output will show your GPG key ID, which looks like:
+
+```
+E64B253FC0A9C047E6FAD55E8B1D86868A885711
+```
+
+Save this key ID — you'll need it in the next step.
+
+## Step 6: Configure Docker Credentials
+
+Edit your Docker config file:
+
+```bash
+nano ~/.docker/config.json
+```
+
+Change `"credsStore": "desktop"` to `"credsStore": "pass"`:
+
+```json
+{
+    "auths": {},
+    "credsStore": "pass",
+    "currentContext": "desktop-linux"
+}
+```
+
+Save the file (Ctrl+O, Enter, Ctrl+X in nano).
+
+## Step 7: Initialize Pass Password Manager
+
+Initialize `pass` with your GPG key (replace with your actual key ID):
+
+```bash
+pass init E64B253FC0A9C047E6FAD55E8B1D86868A885711
+```
+
+Verify that `docker-credential-pass` is installed:
+
+```bash
+which docker-credential-pass
+```
+
+It should show `/usr/bin/docker-credential-pass`.
+
+## Step 8: Start Docker Desktop
+
+As your regular user (not root), start Docker Desktop:
+
+```bash
+systemctl --user start docker-desktop
+```
+
+Check that it's running:
+
+```bash
+systemctl --user status docker-desktop
+```
+
+## Step 9: Log In to Docker
+
+Open Docker Desktop from your applications menu (under "Development" in KDE). Click the "G" icon to sign in with Google and complete the authentication process.
+
+Your credentials will now be securely stored using `pass` and your GPG key.
+
+## Step 10: Verify Installation
+
+Test that Docker is working:
+
+```bash
+docker version
+docker run hello-world
+```
+
+## Optional: Enable Docker Desktop on Startup
+
+To automatically start Docker Desktop when you log in:
+
+```bash
+systemctl --user enable docker-desktop
+```
+
+## Troubleshooting
+
+**Docker Desktop won't start:**
+- Make sure you're running commands as your regular user, not root
+- Check status with: `systemctl --user status docker-desktop`
+
+**Login fails:**
+- Verify `pass` is initialized: `pass`
+- Check GPG key: `gpg --list-keys`
+- Restart Docker Desktop: `systemctl --user restart docker-desktop`
+
+**Permission denied errors:**
+- Add your user to the docker group: `sudo usermod -aG docker $USER`
+- Log out and log back in for changes to take effect
+
+## References
+
+- [Docker Desktop Documentation](https://docs.docker.com/desktop/)
+- [Docker Desktop Credentials Management for Linux](https://docs.docker.com/desktop/setup/sign-in/#credentials-management-for-linux-users)

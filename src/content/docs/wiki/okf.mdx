@@ -1,0 +1,186 @@
+---
+title: Google OKF (Open Knowledge Format)
+description: Kako Colibri uporablja OKF v0.2 frontmatter za strojno berljive metapodatke wiki, trust tiers, odkrivanje zastarelosti in sledenje provenience
+---
+
+## Kaj je OKF?
+
+**OKF (Open Knowledge Format)** je specifikacija iz [GoogleCloudPlatform/knowledge-catalog](https://github.com/GoogleCloudPlatform/knowledge-catalog) za strojno berljiv frontmatter na straneh znanja. Omogoča:
+
+- **Prikaz trust tiers** — human-reviewed vs agent-authored vsebina
+- **Avtomatsko odkrivanje zastarelosti** — `stale_after` datumi sprožijo letni pregled
+- **Sledenje izvoru** — `generated.at`, `verified.at`, `generated.by`, `verified.by`
+- **Izmenjava paketov med repozitoriji** — OKF-skladni paketi se lahko izmenjujejo med njimi
+
+Colibri je sprejel OKF v0.2 v commit-u [0c964cd](https://code.smilepowered.org/clawdie/colibri/commit/0c964cd6ba9f71cbc03a2cc14c7807d878e7ea4f) (2026-07-26).
+
+## Shema Frontmatter (v0.2)
+
+Vsaka `docs/wiki/*.md` stran sedaj nosi ta frontmatter:
+
+```yaml
+---
+type: "Agent Harness Reference"        # Type taxonomy (glej spodaj)
+title: "Agent Harness Reference"       # Človeško berljiv naslov
+description: "The zot (agent) + Colibri (control plane) split..."
+tags: [architecture, cost, skill, task, agent, harness, hive, deploy, jail, mother, vault, terminal, tmux, ssh, benchmark, pricing, tokenomics, naming, quality, contract, store, pull, daemon, factory, rust, bare, llama, glm, deepseek, a2a, model, doctor, headroom, dashboard, operator, routing, pane, external]
+status: "stable"                       # stable | draft | deprecated
+stale_after: "2026-12-31"              # ISO datum — sproži letni pregled
+generated:
+  by: "human:sam"                      # human:sam | agent:zot/v1.2.3
+  at: "2026-06-15T10:00:00Z"           # ISO 8601 timestamp
+verified:
+  - by: "human:sam"
+    at: "2026-06-20T09:00:00Z"
+---
+```
+
+### Taksonomija Tipov
+
+| Tip | Strani |
+|-----|--------|
+| **Agent Harness Reference** | agent-harness, agent-events-reference, glasspane, hive-pane, hive-routing, runtime-inventory |
+| **Cost Model** | cost-model, deepseek-pricing, glm-pricing, tokenomics |
+| **Skill Catalog Entry** | skills-catalog, layered-soul |
+| **Task Board Design** | task-board, task-dispatch-flow |
+| **Operational Procedure** | deployment, doctor, jail-confinement, mother-hive, updating-a-node, vault-provision, terminal, tmux-safety |
+| **Glossary** | abbreviations |
+| **Reference** | contracts, store-schema, pull-requests, naming-decisions, quality-gates, factory-model, rust-glossary, bare-metal-freebsd, llama-cpp, llama-cpp-benchmarks, glm-pricing, deepseek-pricing, a2a-complexity-audit, model-selection-and-eval, doctor, headroom-sidecar, ssh-bridge, cost-dashboard, operator-attention, operator-cli, external-mcp |
+| **Architecture Decision** | (rezervirano za ADR-je) |
+
+### Trust Tiers (Ravni Zaupanja)
+
+| Tier | `generated.by` | `verified.by` | Prikaz |
+|------|----------------|---------------|--------|
+| **Human-reviewed** | `human:sam` | `human:sam` | ✅ Zelen badge |
+| **Agent-authored, human-verified** | `agent:zot/v1.2.3` | `human:sam` | 🟡 Rumen badge |
+| **Agent-authored, unverified** | `agent:zot/v1.2.3` | — | 🔴 Rdeč badge |
+
+Predicate `operator-attention` uporablja te ravni za izpostavitev strani, ki potrebujejo pregled.
+
+## Avtomatizacija: `wiki-to-okf.sh`
+
+Skripta na `scripts/wiki-to-okf.sh` doda frontmatter na vse wiki strani:
+
+```bash
+# Dry run — pokaže, kaj bi se spremenilo
+./scripts/wiki-to-okf.sh --dry-run
+
+# Uporabi frontmatter na vseh straneh
+./scripts/wiki-to-okf.sh
+
+# Uporabi in zaženi wiki-lint --strict
+./scripts/wiki-to-okf.sh --verify
+```
+
+### Kaj dela
+
+1. **Preskoči** `index.md` (dobi samo `okf_version: "0.2"`) in `log.md`
+2. **Izlušči** naslov iz prve `#` glave
+3. **Izlušči** opis iz prvega odstavka po naslovu
+4. **Določi** tip iz ključnih besed v imenu datoteke
+5. **Generira** oznake iz ključnih besed v imenu datoteke
+6. **Nastavi** `stale_after: "2026-12-31"` (letni cikel pregleda)
+7. **Nastavi** `generated.by: "human:sam"` in `verified.by: "human:sam"` (vse trenutne strani so human-reviewed)
+
+### Logika za določanje tipov
+
+```bash
+case "$filename" in
+  *pricing*|*cost*|*tokenomics*)     type="Cost Model" ;;
+  *skill*|*catalog*|*layered-soul*)  type="Skill Catalog Entry" ;;
+  *task*|*board*|*scheduler*|*dispatch*) type="Task Board Design" ;;
+  *agent*|*harness*|*event*|*hive*|*runtime*|*glasspane*) type="Agent Harness Reference" ;;
+  *deploy*|*jail*|*mother*|*updating*|*vault*|*terminal*|*tmux*) type="Operational Procedure" ;;
+  *abbrev*)                          type="Glossary" ;;
+  *naming*|*quality*|*contract*|*store*|*pull*|*daemon*|*factory*|*rust*|*bare*|*llama*|*bench*|*glm*|*deepseek*|*a2a*|*model*|*doctor*|*headroom*|*ssh*|*cost-dash*|*operator*|*hive-pane*|*hive-rout*|*external*) type="Reference" ;;
+  *)                                 type="Architecture Decision" ;;
+esac
+```
+
+## CI Integracija
+
+OKF frontmatter se preverja na treh točkah:
+
+1. **`wiki-lint --strict`** (v CI build-u)  
+   Preveri vse wiki strani za:
+   - **viseče reference** (neobstoječe povezave) — povezave, ki vodijo v nič
+   - **oživljena imena** — stara imena, ki so se znova pojavila
+   - **osirotele strani** — strani, na katere nihče ne sklicuje
+
+2. **`ci-checks.sh --strict`** (v CI build-u)  
+   Požene celoten testni cikel vključno z `wiki-lint` — del, ki se zažene pred objavo v Git repozitoriju
+
+3. **Pre-push hook** (pred `git push`, lokalno)  
+   Blokira `git push`, če `wiki-lint` spodleti — enako kot clippy opozorila blokirajo push
+
+## Primer: Frontmatter Strange Abbreviations
+
+```yaml
+---
+type: "Glossary"
+title: "Abbreviations"
+description: "Expansions for acronyms and technical terms used across Colibri wikis. When a new term enters a wiki page, add it here so the next reader doesn't have to search."
+tags: [abbreviations, glossary]
+status: "stable"
+stale_after: "2026-12-31"
+generated:
+  by: "human:sam"
+  at: "2026-06-15T10:00:00Z"
+verified:
+  - by: "human:sam"
+    at: "2026-06-20T09:00:00Z"
+---
+```
+
+## Prednosti za Colibri
+
+| Funkcionalnost | Kako pomaga |
+|----------------|-------------|
+| **Opozorila o zastarelosti** | `stale_after: 2026-12-31` → letno opozorilo za pregled v TUI/CLI |
+| **Transparentnost zaupanja** | Operator vidi, katere strani so human-verified vs agent-generated |
+| **Revizijska sled** | `generated.at` / `verified.at` časovni žigi za skladnost |
+| **Cross-repo sinhronizacija** | OKF paketi se lahko izmenjujejo z drugimi GoogleCloudPlatform/knowledge-catalog uporabniki |
+| **Avtorstvo agenta** | Prihodnje agent-authored strani dobijo `generated.by: agent:zot/vX.Y.Z` za sledljivost |
+
+## Tri stroškovne vzporednice (Vizualizacija)
+
+"Tri stroškovne vzporednice" iz `tokenomics.md` — tri strategije za zmanjšanje stroškov LLM API:
+
+```
+Price
+  ↑
+  │    ┌─────────┐        ┌─────────┐
+  │    │  PEAK   │        │  PEAK   │  ← dnevi / visoka zahteva
+  │    └────┬────┘        └────┬────┘
+  │         │                  │
+  │    ┌────┴────┐        ┌────┴────┐
+  │    │ VALLEY  │        │ VALLEY  │  ← noči / nizka zahteva
+  │    └─────────┘        └─────────┘
+  └─────────────────────────────────→ Time
+       Day 1              Day 2
+```
+
+| Strategija | Kaj pomeni | Kako prihranjuje |
+|------------|------------|------------------|
+| **(valley)** | **Časovanje** — poženi obremenitve v off-peak ure, ko ponudniki zaračunujejo manj | DeepSeek ima "peak-valley pricing": ~50% ceneje noči (UTC 16:00–08:00) / Ljubljanska noč |
+| **predpomnilnik (prefix)** | **Predpomnjenje** — ponovno uporabi prompt prefix, da ne plačaš za ponovno obdelavo istega konteksta | Byte-stable prefixi = cache hits = plačaš samo za nove tokene |
+| **proračun (cost modes)** | **Budget mode** — izberi cenejše modele / manjši kontekst / manj tokenov za nekritične naloge | npr. GLM-5-Turbo namesto GLM-5.2, ali 8B namesto 14B |
+
+**Zakaj "valley"?** Izposojeno iz DeepSeek-ovega cenovnega modela (in AWS spot instances): "valley" je poceni časovno okno. Porazdelite težke obremenitve (evali, batch jobs, indeksiranje) v valley, da prihranite ~50%.
+
+## Prihodnje Delo
+
+- [ ] TUI/CLI trust-tier display (operator-attention predicate)
+- [ ] Avtomatsko odkrivanje zastarelosti preko `stale_after` datuma
+- [ ] Revizija agent-authored strani (`generated.by = agent/version`)
+- [ ] Cross-repo izmenjava paketov (OKF conformant)
+- [ ] Integracija z `colibri doctor` za wiki health checks
+
+## Reference
+
+- [GoogleCloudPlatform/knowledge-catalog SPEC.md](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/SPEC.md)
+- [Colibri commit 0c964cd](https://code.smilepowered.org/clawdie/colibri/commit/0c964cd6ba9f71cbc03a2cc14c7807d878e7ea4f) — začetna uporaba OKF
+- [Colibri commit 5d3925f](https://code.smilepowered.org/clawdie/colibri/commit/5d3925fd795167099d41210100dafa6dc3e67091) — prettier formatiranje
+- `scripts/wiki-to-okf.sh` — avtomatizacijska skripta
+- `scripts/wiki-lint` — validacijska skripta

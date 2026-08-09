@@ -1,0 +1,186 @@
+---
+title: Google OKF (Open Knowledge Format)
+description: How Colibri uses OKF v0.2 frontmatter for machine-readable wiki metadata, trust tiers, staleness detection, and provenance tracking
+---
+
+## What is OKF?
+
+**OKF (Open Knowledge Format)** is a specification from [GoogleCloudPlatform/knowledge-catalog](https://github.com/GoogleCloudPlatform/knowledge-catalog) for machine-readable frontmatter on knowledge pages. It enables:
+
+- **Trust tier display** — human-reviewed vs agent-authored content
+- **Automated staleness detection** — `stale_after` dates trigger annual review
+- **Provenance tracking** — `generated.at`, `verified.at`, `generated.by`, `verified.by`
+- **Cross-repo bundle exchange** — OKF-conformant bundles can be shared between repositories
+
+Colibri adopted OKF v0.2 in commit [0c964cd](https://code.smilepowered.org/clawdie/colibri/commit/0c964cd6ba9f71cbc03a2cc14c7807d878e7ea4f) (2026-07-26).
+
+## Frontmatter Schema (v0.2)
+
+Every `docs/wiki/*.md` page now carries this frontmatter:
+
+```yaml
+---
+type: "Agent Harness Reference"        # Type taxonomy (see below)
+title: "Agent Harness Reference"       # Human-readable title
+description: "The zot (agent) + Colibri (control plane) split..."
+tags: [architecture, cost, skill, task, agent, harness, hive, deploy, jail, mother, vault, terminal, tmux, ssh, benchmark, pricing, tokenomics, naming, quality, contract, store, pull, daemon, factory, rust, bare, llama, glm, deepseek, a2a, model, doctor, headroom, dashboard, operator, routing, pane, external]
+status: "stable"                       # stable | draft | deprecated
+stale_after: "2026-12-31"              # ISO date — triggers annual review
+generated:
+  by: "human:sam"                      # human:sam | agent:zot/v1.2.3
+  at: "2026-06-15T10:00:00Z"           # ISO 8601 timestamp
+verified:
+  - by: "human:sam"
+    at: "2026-06-20T09:00:00Z"
+---
+```
+
+### Type Taxonomy
+
+| Type | Pages |
+|------|-------|
+| **Agent Harness Reference** | agent-harness, agent-events-reference, glasspane, hive-pane, hive-routing, runtime-inventory |
+| **Cost Model** | cost-model, deepseek-pricing, glm-pricing, tokenomics |
+| **Skill Catalog Entry** | skills-catalog, layered-soul |
+| **Task Board Design** | task-board, task-dispatch-flow |
+| **Operational Procedure** | deployment, doctor, jail-confinement, mother-hive, updating-a-node, vault-provision, terminal, tmux-safety |
+| **Glossary** | abbreviations |
+| **Reference** | contracts, store-schema, pull-requests, naming-decisions, quality-gates, factory-model, rust-glossary, bare-metal-freebsd, llama-cpp, llama-cpp-benchmarks, glm-pricing, deepseek-pricing, a2a-complexity-audit, model-selection-and-eval, doctor, headroom-sidecar, ssh-bridge, cost-dashboard, operator-attention, operator-cli, external-mcp |
+| **Architecture Decision** | (reserved for ADRs) |
+
+### Trust Tiers
+
+| Tier | `generated.by` | `verified.by` | Display |
+|------|----------------|---------------|---------|
+| **Human-reviewed** | `human:sam` | `human:sam` | ✅ Green badge |
+| **Agent-authored, human-verified** | `agent:zot/v1.2.3` | `human:sam` | 🟡 Yellow badge |
+| **Agent-authored, unverified** | `agent:zot/v1.2.3` | — | 🔴 Red badge |
+
+The `operator-attention` predicate uses these tiers to surface pages needing review.
+
+## Automation: `wiki-to-okf.sh`
+
+The script at `scripts/wiki-to-okf.sh` adds frontmatter to all wiki pages:
+
+```bash
+# Dry run — show what would change
+./scripts/wiki-to-okf.sh --dry-run
+
+# Apply frontmatter to all pages
+./scripts/wiki-to-okf.sh
+
+# Apply and run wiki-lint --strict
+./scripts/wiki-to-okf.sh --verify
+```
+
+### What it does
+
+1. **Skips** `index.md` (gets `okf_version: "0.2"` only) and `log.md`
+2. **Extracts** title from first `#` heading
+3. **Extracts** description from first paragraph after title
+4. **Infers** type from filename keywords
+5. **Generates** tags from filename keywords
+6. **Sets** `stale_after: "2026-12-31"` (annual review cycle)
+7. **Sets** `generated.by: "human:sam"` and `verified.by: "human:sam"` (all current pages are human-reviewed)
+
+### Type Inference Logic
+
+```bash
+case "$filename" in
+  *pricing*|*cost*|*tokenomics*)     type="Cost Model" ;;
+  *skill*|*catalog*|*layered-soul*)  type="Skill Catalog Entry" ;;
+  *task*|*board*|*scheduler*|*dispatch*) type="Task Board Design" ;;
+  *agent*|*harness*|*event*|*hive*|*runtime*|*glasspane*) type="Agent Harness Reference" ;;
+  *deploy*|*jail*|*mother*|*updating*|*vault*|*terminal*|*tmux*) type="Operational Procedure" ;;
+  *abbrev*)                          type="Glossary" ;;
+  *naming*|*quality*|*contract*|*store*|*pull*|*daemon*|*factory*|*rust*|*bare*|*llama*|*bench*|*glm*|*deepseek*|*a2a*|*model*|*doctor*|*headroom*|*ssh*|*cost-dash*|*operator*|*hive-pane*|*hive-rout*|*external*) type="Reference" ;;
+  *)                                 type="Architecture Decision" ;;
+esac
+```
+
+## CI Integration
+
+The OKF frontmatter is validated at three points:
+
+1. **`wiki-lint --strict`** (in CI build)  
+   Checks all wiki pages for:
+   - **dangling references** (broken links) — links pointing to non-existent pages
+   - **resurrected names** — old terms that reappeared after being renamed
+   - **orphan pages** — pages that exist but nothing links to them
+
+2. **`ci-checks.sh --strict`** (in CI build)  
+   Runs the full test suite including `wiki-lint` — part of the pre-merge gate that runs before pushing to Git repository
+
+3. **Pre-push hook** (before `git push`, local)  
+   Blocks `git push` if `wiki-lint` fails — same as clippy warnings blocking push
+
+## Example: Abbreviations Page Frontmatter
+
+```yaml
+---
+type: "Glossary"
+title: "Abbreviations"
+description: "Expansions for acronyms and technical terms used across Colibri wikis. When a new term enters a wiki page, add it here so the next reader doesn't have to search."
+tags: [abbreviations, glossary]
+status: "stable"
+stale_after: "2026-12-31"
+generated:
+  by: "human:sam"
+  at: "2026-06-15T10:00:00Z"
+verified:
+  - by: "human:sam"
+    at: "2026-06-20T09:00:00Z"
+---
+```
+
+## Benefits for Colibri
+
+| Feature | How it helps |
+|---------|--------------|
+| **Staleness alerts** | `stale_after: 2026-12-31` → annual review reminder in TUI/CLI |
+| **Trust transparency** | Operator sees which pages are human-verified vs agent-generated |
+| **Audit trail** | `generated.at` / `verified.at` timestamps for compliance |
+| **Cross-repo sync** | OKF bundles can be exchanged with other GoogleCloudPlatform/knowledge-catalog consumers |
+| **Agent authorship** | Future agent-authored pages get `generated.by: agent:zot/vX.Y.Z` for traceability |
+
+## The Three Cost Parallels (Visual)
+
+The "three cost parallels" from `tokenomics.md` — three strategies to reduce LLM API costs:
+
+```
+Price
+  ↑
+  │    ┌─────────┐        ┌─────────┐
+  │    │  PEAK   │        │  PEAK   │  ← daytime / high demand
+  │    └────┬────┘        └────┬────┘
+  │         │                  │
+  │    ┌────┴────┐        ┌────┴────┐
+  │    │ VALLEY  │        │ VALLEY  │  ← night / low demand
+  │    └─────────┘        └─────────┘
+  └─────────────────────────────────→ Time
+       Day 1              Day 2
+```
+
+| Lever | What it means | How it saves money |
+|-------|---------------|-------------------|
+| **(valley)** | **Timing** — run workloads during off-peak hours when providers charge less | DeepSeek has "peak-valley pricing": ~50% cheaper at night (UTC 16:00–08:00) / Ljubljana night |
+| **predpomnilnik (prefix)** | **Caching** — reuse the prompt prefix so you don't pay for re-processing the same context | Byte-stable prefixes = cache hits = pay only for new tokens |
+| **proračun (cost modes)** | **Budget mode** — choose cheaper models / smaller contexts / fewer tokens for non-critical tasks | e.g. use GLM-5-Turbo instead of GLM-5.2, or 8B instead of 14B |
+
+**Why "valley"?** It comes from DeepSeek's pricing model (and AWS spot instances): the "valley" is the cheap time window. Schedule heavy workloads (evals, batch jobs, indexing) into the valley to cut costs ~50%.
+
+## Future Work
+
+- [ ] TUI/CLI trust-tier display (operator-attention predicate)
+- [ ] Automated staleness detection via `stale_after` date
+- [ ] Agent-authored page auditing (`generated.by = agent/version`)
+- [ ] Cross-repo bundle exchange (OKF conformant)
+- [ ] Integration with `colibri doctor` for wiki health checks
+
+## References
+
+- [GoogleCloudPlatform/knowledge-catalog SPEC.md](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/SPEC.md)
+- [Colibri commit 0c964cd](https://code.smilepowered.org/clawdie/colibri/commit/0c964cd6ba9f71cbc03a2cc14c7807d878e7ea4f) — initial OKF adoption
+- [Colibri commit 5d3925f](https://code.smilepowered.org/clawdie/colibri/commit/5d3925fd795167099d41210100dafa6dc3e67091) — prettier formatting
+- `scripts/wiki-to-okf.sh` — automation script
+- `scripts/wiki-lint` — validation script

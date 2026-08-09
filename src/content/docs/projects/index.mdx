@@ -1,0 +1,123 @@
+---
+title: Pregled projektov
+description: Moji projekti in dosežki
+---
+
+import Lightbox from '~/components/Lightbox.astro';
+import { blenderDomeExample, blenderExample } from '~/components/ImageRegistry';
+
+---
+
+Tukaj so predstavljeni moji projekti — od spletnih strani do infrastrukture in orodij za razvoj.
+
+## Delujoči projekti
+
+### Clawdie ISO — Operator USB Image (Glavni projekt)
+
+Bootable USB image — development surface za Colibri + installer za colibri service na bare metal. Združuje FreeBSD 15, ZFS RAID1, bhyve VMs, Bastille jails, in Colibri control plane v en prenosljiv artifact.
+
+**Tehnološki sklad:** FreeBSD 15 (quindecim) · XFCE · ZFS RAID1 mirror · bhyve · Bastille jails · pgvector · poudriere · age-encrypted seed partition
+
+**Ključne milestone:** [Poglejte poln build log v wiki →](https://code.smilepowered.org/clawdie/clawdie-iso/src/branch/main/docs)
+
+- Seed partition + age encryption (PIN unlock, no Vaultwarden)
+- Firstboot pipeline: seed decrypt → Pi agent (npm global) → home overlay
+- Colibri-daemon (systemd-style, AUTOSPAWN=YES, PostgreSQL + pgvector)
+- Mother/Hive arhitektura: colibri-mcp SSH-stdio bridge + tool proxy
+- Poudriere package repo + verificirani artifacts (build-manifest.json, check_release_gate)
+- Hardware-validirano na Valhala (HP ML350p Gen8)
+
+**Trenutna verzija:** 0.12.0 (objavljeno) → 0.13.0 target (v razvoju: Colibri integration, wiki, OKF)
+
+**Build host:** Valhala — HP ML350p Gen8, FreeBSD 15, `doas`, poudriere bulk builds
+
+---
+
+### Colibri — Tokenomics Trifecta (Rust + Go) — *Work in Progress*
+
+Control plane za avtonomne AI agente z **tokenomics trifecto**: performance / speed / cost. Ciljna metrika: **cost-per-intelligence > cost-per-token**.
+
+⚠️ **Opomba:** Še vedno v aktivnem razvoju. Komponenti delujejo posamezno, a polna veriga (boot → seed → Pi agent → Colibri daemon → Mother/Hive → benchmark) ni end-to-end validirana na hardware.
+
+**Tehnologije:** Rust (core: daemon, CLI, zot) · Go (services: API, MCP bridge, cost dashboard) · PostgreSQL + pgvector · bhyve VMs · Bastille jails
+
+**Komponenti:** [Poglejte status matriko v wiki →](https://code.smilepowered.org/clawdie/colibri/src/branch/main/docs)
+
+- `colibri-daemon` (Rust) — core loop, systemd-style supervision ✅
+- `colibri-cli` (Rust) — basics, manjkajo napredni subcommands 🔄
+- `zot` agent harness (Rust) — NDJSON RPC, subtask delegation, tool interception ✅
+- `colibri-mcp` (Go) — SSH-stdio bridge, tool proxy ✅
+- `cost-dashboard` (Go) — v razvoju 🔄
+- `llama.cpp benchmarks` (Rust/Go) — `/v1` timings object za ms/tok ✅
+
+**Dokumentacija:** Colibri wiki — 44 strani (LLM benchmarks, architecture decisions, OKF v0.2, pre-push hooks)
+
+**Blockers za end-to-end:** bhyve spawn logic v ISO 🔄 · pgvector migration script 🔄 · cost-dashboard integration 🔄 · hardware test na Valhala 📅
+
+---
+
+### Herdr — Terminal Workspace Manager
+
+**Tehnologije:** Rust, ratatui, PTY, tmux-style sessions
+
+**Opis:** Terminal-native agent runtime in multiplexer. Poganja ločene AI agente v pravih zavihkih, omogoča priklop/odklop sej, uporablja SSH attach, agent state (blocked/working/done), in API za orkestracijo.
+
+**Status:** Aktivni razvoj, objavljeno na [herdr.dev](https://herdr.dev) · [GitHub](https://github.com/ogulcancelik/herdr)
+
+---
+
+### Zot Agent Harness
+
+**Tehnologije:** Rust, NDJSON RPC, Codex/Claude/OpenCode integracija
+
+**Opis:** Agent harness za delegiranje kodnih nalog. Omogoča `zot rpc` komunikacijo, sottask delegation, tool-call interception, in multi-agent workflows.
+
+**Vloga:** Osnova za Hermes-BSD multi-agent orkestracijo
+
+---
+
+### Pi Harness
+
+**Tehnologije:** Node.js, `@earendil-works/pi-coding-agent` (npm global), Aider
+
+**Opis:** Samostojen, konfigurabilen agent za avtonomno razvoj. Glavna izvajalna vrstica na Clawdie ISO — nameščen kot npm global z **home overlay** (`.pi/agent/` kopirano v `$HOME`). Deluje pod Hermes orkestracijo (Hermes=orchestrator, Codex=FreeBSD/ISO, Claude=dizajn, Zot=kodiranje). Zamenjal OpenClaw (Peter Steinberger) kot primerni harness za Hermes ekosistem.
+
+---
+
+## Spletne strani
+
+**Osebna spletna stran (ta stran)** — Astro, Starlight, TypeScript · Večjezični CV/portfolio · V razvoju
+
+**Bučko - spletna stran za psa** — Astro · [bucko.smilepowered.org](https://bucko.smilepowered.org) · V produkciji
+
+---
+
+## Infrastruktura
+
+**VPS strežnik na Vultr** — Docker, Traefik, Linux · Samostojno gostovanje spletnih aplikacij z reverznim proxyjem in SSL certifikati · Storitve: spletne strani, n8n (avtomatizacija delovnih tokov)
+
+---
+
+## V učenju / Raziskava (združeno)
+
+Aktivno se učim in raziskujem:
+
+- **Rust** — systems programming, Colibri core, Herdr, Zot
+- **Go** — Colibri services, CLI tools, high-throughput services
+- **Python** — AI/ML projekti
+- **LangChain / LangGraph** — RAG sistemi
+- **n8n** — avtomatizacija delovnih tokov
+- **Lokalni LLM modeli** — eksperimentiranje z Ollama
+- **MCP Protocol** — Model Context Protocol za tool integration
+- **Blender Geometry Nodes** — proceduralno modeliranje geodetskih kupol
+- **FreeBSD 15 / ZFS / bhyve** — napredno upravljanje diskov, jails, virtualizacija
+- **Hermes Agent** — personal AI agent across CLI, TUI, gateway, desktop
+- **Claude Code / Opencode / Codex** — AI coding assistants
+- **RAG Systems / pgvector** — vektorski spomin
+- **Tokenomics (perf/speed/cost)** — cost-per-intelligence metrika
+- **llama.cpp timings** — ms/tok merjenje
+- **Google OKF** — Open Knowledge Format frontmatter
+
+---
+
+*Posodobljeno: 2026 | Projekti in interesi se neprestano razvijajo.*

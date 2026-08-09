@@ -3,9 +3,10 @@ title: Dobrodošli
 description: Osebna dokumentacija in projekti Sama Blatnika
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
 import profileImage from '~/assets/samob.jpeg';
 import ProfileImage from '~/components/ProfileImage.astro';
+import EmojiCard from '~/components/EmojiCard.astro';
+import EmojiCardGrid from '~/components/EmojiCardGrid.astro';
 
 ## O meni
 
@@ -15,14 +16,14 @@ Pozdravljeni! Moje ime je Samo Blatnik, sem IT podporno osebje z dolgoletnimi iz
 
 ## Na tej strani lahko najdete
 
-<CardGrid>
-	<Card title="Življenjepis" icon="user">
+<EmojiCardGrid>
+	<EmojiCard title="Življenjepis" emoji="🧑‍💼" href="/cv/">
 		Preberite več o moji izobrazbi, izkušnjah in veščinah.
-	</Card>
-	<Card title="Projekti" icon="rocket">
+	</EmojiCard>
+	<EmojiCard title="Projekti" emoji="🚀" href="/projects/">
 		Odkrijte moje projekte in dosežke v razvoju programske opreme.
-	</Card>
-	<Card title="Navodila" icon="book">
+	</EmojiCard>
+	<EmojiCard title="Navodila" emoji="📚" href="/guides/">
 		Praktični vodiči in navodila za različne tehnologije, ki jih uporabljam.
-	</Card>
-</CardGrid>
+	</EmojiCard>
+</EmojiCardGrid>

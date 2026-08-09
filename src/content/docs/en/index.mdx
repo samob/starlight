@@ -3,9 +3,10 @@ title: Welcome
 description: Personal documentation and projects by Samo Blatnik
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
 import profileImage from '~/assets/samob.jpeg';
 import ProfileImage from '~/components/ProfileImage.astro';
+import EmojiCard from '~/components/EmojiCard.astro';
+import EmojiCardGrid from '~/components/EmojiCardGrid.astro';
 
 ## About Me
 
@@ -15,14 +16,14 @@ Hello! I'm Samo Blatnik, an IT support personnel with years of experience in ser
 
 ## What You'll Find Here
 
-<CardGrid>
-	<Card title="CV" icon="user">
+<EmojiCardGrid>
+	<EmojiCard title="CV" emoji="🧑‍💼" href="/en/cv/">
 		Learn more about my education, experience, and skills.
-	</Card>
-	<Card title="Projects" icon="rocket">
+	</EmojiCard>
+	<EmojiCard title="Projects" emoji="🚀" href="/en/projects/">
 		Discover my software development projects and achievements.
-	</Card>
-	<Card title="Guides" icon="book">
+	</EmojiCard>
+	<EmojiCard title="Guides" emoji="📚" href="/en/guides/">
 		Practical guides and tutorials for various technologies.
-	</Card>
-</CardGrid>
+	</EmojiCard>
+</EmojiCardGrid>

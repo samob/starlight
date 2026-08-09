@@ -1,0 +1,123 @@
+---
+title: Projects Overview
+description: My projects and achievements
+---
+
+import Lightbox from '~/components/Lightbox.astro';
+import { blenderDomeExample, blenderExample } from '~/components/ImageRegistry';
+
+---
+
+Here are my projects — from websites to infrastructure and developer tooling.
+
+## Working Projects
+
+### Clawdie ISO — Operator USB Image (Main Project)
+
+Bootable USB image — development surface for Colibri + installer for colibri service on bare metal. This is the most significant project, combining FreeBSD operating system, ZFS, bhyve virtualization, Bastille jails, and Colibri control plane into a single portable artifact.
+
+**Technology Stack:** FreeBSD 15 (quindecim) · XFCE · ZFS RAID1 mirror · bhyve · Bastille jails · pgvector · poudriere · age-encrypted seed partition
+
+**Key Milestones:** [View full build log in wiki →](https://code.smilepowered.org/clawdie/clawdie-iso/src/branch/main/docs)
+
+- Seed partition + age encryption (PIN unlock, no Vaultwarden)
+- Firstboot pipeline: seed decrypt → Pi agent (npm global) → home overlay
+- Colibri-daemon (systemd-style, AUTOSPAWN=YES, PostgreSQL + pgvector)
+- Mother/Hive architecture: colibri-mcp SSH-stdio bridge + tool proxy
+- Poudriere package repo + verified artifacts (build-manifest.json, check_release_gate)
+- Hardware-validated on Valhala (HP ML350p Gen8)
+
+**Current Version:** 0.12.0 (released) → 0.13.0 target (in development: Colibri integration, wiki, OKF)
+
+**Build Host:** Valhala — HP ML350p Gen8, FreeBSD 15, `doas`, poudriere bulk builds
+
+---
+
+### Colibri — Tokenomics Trifecta (Rust + Go) — *Work in Progress*
+
+Control plane for autonomous AI agents with **tokenomics trifecta**: performance / speed / cost. Target metric: **cost-per-intelligence > cost-per-token**.
+
+⚠️ **Note:** Still in active development. Components work individually, but full chain (boot → seed → Pi agent → Colibri daemon → Mother/Hive → benchmark) not end-to-end validated on hardware.
+
+**Technologies:** Rust (core: daemon, CLI, zot) · Go (services: API, MCP bridge, cost dashboard) · PostgreSQL + pgvector · bhyve VMs · Bastille jails
+
+**Components:** [View status matrix in wiki →](https://code.smilepowered.org/clawdie/colibri/src/branch/main/docs)
+
+- `colibri-daemon` (Rust) — core loop, systemd-style supervision ✅
+- `colibri-cli` (Rust) — basics, missing advanced subcommands 🔄
+- `zot` agent harness (Rust) — NDJSON RPC, subtask delegation, tool interception ✅
+- `colibri-mcp` (Go) — SSH-stdio bridge, tool proxy ✅
+- `cost-dashboard` (Go) — in development 🔄
+- `llama.cpp benchmarks` (Rust/Go) — `/v1` timings object for ms/tok ✅
+
+**Documentation:** Colibri wiki — 44 pages (LLM benchmarks, architecture decisions, OKF v0.2, pre-push hooks)
+
+**Blockers for end-to-end:** bhyve spawn logic in ISO 🔄 · pgvector migration script 🔄 · cost-dashboard integration 🔄 · hardware test on Valhala 📅
+
+---
+
+### Herdr — Terminal Workspace Manager
+
+**Technologies:** Rust, ratatui, PTY, tmux-style sessions
+
+**Description:** Terminal-native agent runtime and multiplexer. Runs separate AI agents in real tabs, enables session attach/detach, uses SSH attach, agent state (blocked/working/done), and an API for orchestration.
+
+**Status:** Active development, published at [herdr.dev](https://herdr.dev) · [GitHub](https://github.com/ogulcancelik/herdr)
+
+---
+
+### Zot Agent Harness
+
+**Technologies:** Rust, NDJSON RPC, Codex/Claude/OpenCode integration
+
+**Description:** Agent harness for delegating coding tasks. Enables `zot rpc` communication, subtask delegation, tool-call interception, and multi-agent workflows.
+
+**Role:** Foundation for Hermes-BSD multi-agent orchestration
+
+---
+
+### Pi Harness
+
+**Technologies:** Node.js, `@earendil-works/pi-coding-agent` (npm global), Aider
+
+**Description:** Standalone, configurable agent for autonomous development. Primary execution lane on Clawdie ISO — installed as npm global with **home overlay** (`.pi/agent/` → `$HOME`). Runs under Hermes orchestration (Hermes=orchestrator, Codex=FreeBSD/ISO, Claude=design, Zot=coding). Replaced OpenClaw (Peter Steinberger) as the suitable harness for Hermes ecosystem.
+
+---
+
+## Websites
+
+**Personal Website (this site)** — Astro, Starlight, TypeScript · Multilingual CV/portfolio · In development
+
+**Bučko - Dog Website** — Astro · [bucko.smilepowered.org](https://bucko.smilepowered.org) · In production
+
+---
+
+## Infrastructure
+
+**VPS Server on Vultr** — Docker, Traefik, Linux · Self-hosted web applications with reverse proxy and SSL certificates · Services: websites, n8n (workflow automation)
+
+---
+
+## Currently Learning / Research (merged)
+
+Actively learning and exploring:
+
+- **Rust** — systems programming, Colibri core, Herdr, Zot
+- **Go** — Colibri services, CLI tools, high-throughput services
+- **Python** — for use in AI/ML projects
+- **LangChain / LangGraph** — tools for building RAG systems
+- **n8n** — workflow automation
+- **Local LLM models** — experimenting with Ollama
+- **MCP Protocol** — Model Context Protocol for tool integration
+- **Blender Geometry Nodes** — procedural modeling of geodesic domes
+- **FreeBSD 15 / ZFS / bhyve** — advanced disk management, jails, virtualization
+- **Hermes Agent** — personal AI agent across CLI, TUI, gateway, desktop
+- **Claude Code / Opencode / Codex** — AI coding assistants
+- **RAG Systems / pgvector** — vector memory
+- **Tokenomics (perf/speed/cost)** — cost-per-intelligence metric
+- **llama.cpp timings** — ms/tok measurement
+- **Google OKF** — Open Knowledge Format frontmatter
+
+---
+
+*Updated: 2026 | Projects and interests continuously evolving.*

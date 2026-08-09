@@ -1,0 +1,175 @@
+---
+title: Abbreviations Index
+description: Avtomatsko generiran akronimski glosar za Colibri wiki — razširitve akronimov in tehničnih terminov, ki se uporabljajo skozi vse wiki strani
+---
+
+Razširitve akronimov in tehničnih terminov, ki se uporabljajo skozi Colibri wiki. Ko nov termen pride na wiki stran, ga dodaj tukaj, da naslednji bralec ni potrebno iskat.
+
+Ta indeks je **avtomatsko generiran** iz kanoničnega vira na `docs/wiki/abbreviations.md` v Colibri repozitoriju. Stran abbreviations sama nese OKF v0.2 frontmatter z `type: Glossary`.
+
+← [Colibri Wiki](./index.md)
+
+---
+
+## Kako deluje
+
+1. **Vir resnice**: `docs/wiki/abbreviations.md` v Colibri repo
+2. **OKF frontmatter**: Stran ima `type: Glossary`, `status: stable`, `stale_after: 2026-12-31`
+3. **Avtomatska generacija**: Skripta `wiki-to-okf.sh` deducira `type: Glossary` iz imena datoteke `abbreviations.md`
+4. **Validacija lint**: `wiki-lint` preverja nedefinirane okrajšave, ki so referencirane v drugih wiki straneh
+5. **Prekrižna referenca**: Druge wiki strani se sklicujejo na abbreviations preko `[A2A](./abbreviations.md#a2a)` stillah kotnic
+
+## Tabela Okrajšav
+
+### Protokoli in formati
+
+| Termen | Razširitev | Zakaj je pomembno tu |
+|--------|------------|---------------------|
+| **A2A** | Agent-to-Agent | Prihodnji protokol za neposredno agent↔agent komunikacijo |
+| **API** | Application Programming Interface | Kako koda govori s kodo — REST, gRPC, ali MCP |
+| **gRPC** | gRPC Remote Procedure Call | HTTP/2-based RPC — uporablja se za high-throughput service calls |
+| **HTML** | HyperText Markup Language | Struktura spletne strani — dashboard je HTML |
+| **HTTP** | HyperText Transfer Protocol | Spletni request/response protokol |
+| **HTTPS** | HTTP Secure | HTTP preko TLS — šifriran spletni promet |
+| **IPC** | Inter-Process Communication | Cevi, socketi, shared memory — kako daemon↔agent komunicira |
+| **JSON** | JavaScript Object Notation | Človeško berljiv podatkovni format — uporablja se za MCP sporočila, konfiguracije |
+| **JSONB** | JSON Binary | PostgreSQL tip stolpca za indeksirane JSON poizvedbe |
+| **JSONL** | JSON Lines | En JSON objekt na vrstico — uporablja se za streaming in loge |
+| **JWT** | JSON Web Token | Podpisan auth token — Forgejo LFS/OAuth secrets so JWT signing keys |
+| **GGUF** | GPT-Generated Unified Format | Kvantiziran model format za llama.cpp — prenosljiv, enojna datoteka, verzioniran |
+| **GZ** | gzip | Kompresijski format — `.tar.gz`/`.gz`; forge backup dumps in repo archives ga uporabljajo |
+| **MCP** | Model Context Protocol | JSON-RPC preko stdio/SSH — kako orodija govorijo z modeli |
+| **OOM** | Out Of Memory | Kernel ubi največji proces, ko se RAM porabi — opazuj pri migracijah |
+| **TBD** | To Be Determined | Označi neizpolnjen fact v docs — dopolni s PR po izvajanju, nikoli ne ugibaj |
+| **OSC** | Operating System Command | Terminal escape družina; OSC-52 omogoča aplikaciji, da nastavi host clipboard |
+| **RPC** | Remote Procedure Call | Klic funkcije na drugi napravi |
+| **SIGTSTP** | Signal: Terminal Stop | POSIX signal (Ctrl-Z) — tmux safety skill presa SIGTSTP da prepreči agent suspension |
+| **SSH** | Secure Shell | Šifriran remote terminal + forced-command bridge |
+| **TAR** | Tape ARchive | Arhivski format (`.tar`) — kombiniran z gzip za forge backup/volume dumps |
+| **TCP** | Transmission Control Protocol | Zanesljiv urejen byte stream — sedi pod SSH, HTTP, gRPC |
+| **TLS** | Transport Layer Security | Šifrirni sloj pod HTTPS, SMTPS, LDAPS |
+| **TOML** | Tom's Obvious Minimal Language | Config file format — uporablja se za Cargo.toml, colibri manifeste |
+| **TTY** | Teletypewriter | Terminal device interface — signal handling uporablja TTY signale |
+| **URL** | Uniform Resource Locator | Spletni naslov — uporablja se za povezave na docs, dashboards, APIs |
+| **USD** | United States Dollar | Valutna enota za cost tracking — vsi stroški v USD |
+| **UUID** | Universally Unique Identifier | 128-bit ID, ki ne trči — uporablja se za machine-id, naloge |
+| **WAL** | Write-Ahead Log | PostgreSQL durability mehanizem — podatki zapisi v log najprej |
+| **YAML** | YAML Ain't Markup Language | Config format — CI workflows uporabljajo .yml |
+| **ZIP** | Zip (archive format) | Kompresija/arhiv format — Forgejo "Download source archive" links |
+
+### Infrastruktura
+
+| Termen | Razširitev | Zakaj je pomembno tu |
+|--------|------------|---------------------|
+| **ACME** | Automatic Certificate Management Environment | Let's Encrypt protokol — certbot ga uporablja za HTTPS |
+| **BSD** | Berkeley Software Distribution | Unix družina, ki pripada FreeBSD |
+| **CPU** | Central Processing Unit | Glavni procesor — preverja system-probe |
+| **DNS** | Domain Name System | Rešuje hostnames → IPs, vključno z Tailscale MagicDNS |
+| **GC** | Garbage Collection | Avtomatsko sprostitev spomina — Go GC thrashing pod tesnim cgroup limitom bil je forge's 80s-page incident signature |
+| **GPU** | Graphics Processing Unit | Potreben za lokalni LLM inference in Blender |
+| **IMG** | Raw Disk Image (.img) | Clawdie operator USB format — raw disk image, dd/flash-written. Ni ISO 9660. Prose ga imenuje "img". |
+| **IP** | Internet Protocol | Omrežno naslavljanje — vsak node ima Tailscale IP |
+| **ISO** | ISO 9660 Optical Filesystem Image | Optični CD/DVD format — mfsbsd installer in VPS build. Clawdie USB je IMG, ne to. ("ISO 8601" = datum standard; to tudi napiši celo.) |
+| **MEM** | Memory | `docker stats` MEM% stolpec — memory-ceiling polovica forge's two-cause slow-page triage |
+| **PID** | Process ID | Unix process identifier — forge's PID-exhaustion cascade udaril container `pids_limit` cap |
+| **PIDS** | Process IDs (plural) | `docker stats` live-process-count stolpec — PID-exhaustion polovica forge's two-cause slow-page triage |
+| **PNG** | Portable Network Graphics | Lossless image format — screenshots so PNG |
+| **PTY** | Pseudo-Terminal | Virtualni terminal — Kitty, tmux, in agent I/O uporabljajo PTY |
+| **RAM** | Random Access Memory | Sistemski spomin — preverja system-probe |
+| **RTX** | Ray Tracing Texel eXtreme | Nvidia GPU linija — odkrita v capability probes |
+| **SMBIOS** | System Management BIOS | Hardware info tabela — prebrana s system-probe za model/serial |
+| **USB** | Universal Serial Bus | Boot medium — Clawdie img teče iz USB |
+| **VPS** | Virtual Private Server | Najemana VM — OSA teče na eni |
+| **VRAM** | Video RAM | GPU spomin — omejuje lokalni LLM model size |
+| **XDG** | X Desktop Group | Freedesktop standard za config/cache paths |
+| **XFCE** | XForms Common Environment | Lahki FreeBSD desktop — operator GUI surface |
+| **ZFS** | Zettabyte File System | Copy-on-write filesystem — RAID1 mirror, snapshots, send |
+
+### GIS / GURS (Slovenski geodata)
+
+GIS/dome-planning arc (`gurs-address-lookup-mcp`, GIS-INTEGRATION-PLAN doc v clawdie-iso, `docs/GLOSSARY-SL.md` §1) opravičuje slovenske javne geodate preko WFS. Ta sekcija pokriva angleške akronimske razširitve; slovenski customer-facing display labels za iste domain termine živijo v `GLOSSARY-SL.md` §1-2 — dva sta komplementarna, ne duplicata.
+
+| Termen | Razširitev | Zakaj je pomembno tu |
+|--------|------------|---------------------|
+| **CRS** | Coordinate Reference System | V katerem koordinatnem prostoru je vrednost (npr. EPSG:4326 vs EPSG:3794) — neujemani CRS tiho proizvede smeti koordinate |
+| **DMR** | Digitalni model reliefa (digital terrain model) | GURS terrain-elevation dataset — hrani dome-site ground-slope in shadow-study izračune |
+| **EPSG** | European Petroleum Survey Group | Naming authority za CRS kode — EPSG:4326 je WGS84 (lat/lon), EPSG:3794 je slovenska nacionalna mreža (D96/TM) |
+| **GURS** | Geodetska uprava Republike Slovenije | Slovenska geodetska uprava — javna oblast za address register, kadaster, in orthophoto podatke, ki jih ta arc opravičuje |
+| **OPSI** | Odprti podatki Slovenije (Open Data Slovenia) | Splošen vladni open-data portal (podatki.gov.si) — GURS objavlja orthophoto dataset tukaj; OPSI je portal, ne orthophoto imagery sama |
+| **WFS** | Web Feature Service | OGC standard za opravičanje vector geodata preko HTTP (vrne feature data, npr. GeoJSON — za razliko od WMS, ki vrne map images) — protokol `gurs-address-lookup-mcp` govori z GURS |
+
+### Colibri internals
+
+| Termen | Razširitev | Zakaj je pomembno tu |
+|--------|------------|---------------------|
+| **ADR** | Architecture Decision Record | Lahki design doc — beleži zakaj je bila odločitev sprejeta |
+| **CI** | Continuous Integration | Avtomatski preverjanja na vsak push — fmt, clippy, wiki-lint |
+| **CLI** | Command-Line Interface | `colibri` binary — tipkaj ukaze v terminal |
+| **CRUD** | Create Read Update Delete | Štiri osnovne podatkovne operacije — PostgreSQL tabele sledijo tem |
+| **DDL** | Data Definition Language | SQL ukazi, ki definirajo shemo — CREATE TABLE, ALTER, itd. |
+| **ETXTBSY** | Error: Text File Busy | Errno 26 — ne moreš pisati v tekočo binary; install(1) ga izogne |
+| **OKF** | Open Knowledge Format | Google's strojno berljiva frontmatter spec za knowledge pages — omogoča trust tiers, odkrivanje zastarelosti, provenience |
+| **OKR** | Objectives and Key Results | Google's goal-setting framework — četrtletni planning |
+| **RAG** | Retrieval-Augmented Generation | LLM pattern: retrieve docs → augment prompt → generate |
+| **SLA** | Service Level Agreement | Uptime/latency guarantees — sleden v mother-hive cost dashboard |
+
+---
+
+## Podrobnosti Avtomatske Generacije
+
+### `wiki-to-okf.sh` Type Inference
+
+Skripta na `scripts/wiki-to-okf.sh` deducira tip strani iz imena datoteke:
+
+```bash
+case "$base" in
+  *abbrev*.md)
+    type="Glossary"
+    ;;
+  ...
+esac
+```
+
+Ker se datoteka imenuje `abbreviations.md`, dobi `type: Glossary` avtomatsko.
+
+### OKF Frontmatter na Abbreviations Strani
+
+```yaml
+---
+type: "Glossary"
+title: "Abbreviations"
+description: "Expansions for acronyms and technical terms used across Colibri wikis. When a new term enters a wiki page, add it here so the next reader doesn't have to search."
+tags: [abbreviations, glossary]
+status: "stable"
+stale_after: "2026-12-31"
+generated:
+  by: "human:sam"
+  at: "2026-06-15T10:00:00Z"
+verified:
+  - by: "human:sam"
+    at: "2026-06-20T09:00:00Z"
+---
+```
+
+### Wiki-Lint Validacija
+
+`wiki-lint` skripta preverja:
+
+1. **Nedefinirane okrajšave** — če wiki stran uporabi `A2A` ampak ni v `abbreviations.md`, lint faila
+2. **Visajoče reference** — povezave na `abbreviations.md#A2A` se morajo ujemati z vrstico tabele
+3. **Oživljena imena** — preverja proti naming ledgeru za stare termine, ki se ne bi smeli znova pojaviti
+
+### Dodajanje Novih Okrajšav
+
+1. Uredi `docs/wiki/abbreviations.md` v Colibri repo
+2. Dodaj vrstico v ustrezno tabelo (Protocols, Infrastructure, GIS, ali Colibri internals)
+3. Zaženi `./scripts/wiki-to-okf.sh --verify` za posodobitev frontmatter in zagon lint
+4. Commit — pre-push hook zažene `ci-checks.sh --strict` vključno z wiki-lint
+
+---
+
+## Vir
+
+Kanonični vir: [`docs/wiki/abbreviations.md`](https://code.smilepowered.org/clawdie/colibri/src/branch/main/docs/wiki/abbreviations.md) v Colibri repozitoriju.
+
+Last synced: 2026-08-08 (iz commit 0c964cd / 5d3925f)

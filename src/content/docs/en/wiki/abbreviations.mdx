@@ -1,0 +1,175 @@
+---
+title: Abbreviations Index
+description: Auto-generated acronym glossary for Colibri wiki — expansions for acronyms and technical terms used across all wiki pages
+---
+
+Expansions for acronyms and technical terms used across Colibri wikis. When a new term enters a wiki page, add it here so the next reader doesn't have to search.
+
+This index is **auto-generated** from the canonical source at `docs/wiki/abbreviations.md` in the Colibri repository. The abbreviations page itself carries OKF v0.2 frontmatter with `type: Glossary`.
+
+← [Colibri Wiki](./index.md)
+
+---
+
+## How it works
+
+1. **Source of truth**: `docs/wiki/abbreviations.md` in the Colibri repo
+2. **OKF frontmatter**: The page has `type: Glossary`, `status: stable`, `stale_after: 2026-12-31`
+3. **Auto-generation**: The `wiki-to-okf.sh` script infers `type: Glossary` from the filename `abbreviations.md`
+4. **Lint validation**: `wiki-lint` checks for undefined abbreviations referenced in other wiki pages
+5. **Cross-reference**: Other wiki pages link to abbreviations via `[A2A](./abbreviations.md#a2a)` style anchors
+
+## Abbreviations Table
+
+### Protocols and formats
+
+| Term | Stands for | Why it matters here |
+|------|------------|---------------------|
+| **A2A** | Agent-to-Agent | Future protocol for direct agent↔agent communication |
+| **API** | Application Programming Interface | How code talks to code — REST, gRPC, or MCP |
+| **gRPC** | gRPC Remote Procedure Call | HTTP/2-based RPC — used for high-throughput service calls |
+| **HTML** | HyperText Markup Language | Web page structure — dashboard is HTML |
+| **HTTP** | HyperText Transfer Protocol | The web's request/response protocol |
+| **HTTPS** | HTTP Secure | HTTP over TLS — encrypted web traffic |
+| **IPC** | Inter-Process Communication | Pipes, sockets, shared memory — how daemon↔agent talk |
+| **JSON** | JavaScript Object Notation | Human-readable data format — used for MCP messages, configs |
+| **JSONB** | JSON Binary | PostgreSQL column type for indexed JSON queries |
+| **JSONL** | JSON Lines | One JSON object per line — used for streaming and logs |
+| **JWT** | JSON Web Token | Signed auth token — Forgejo LFS/OAuth secrets are JWT signing keys |
+| **GGUF** | GPT-Generated Unified Format | Quantized model format for llama.cpp — portable, single-file, versioned |
+| **GZ** | gzip | Compression format — `.tar.gz`/`.gz`; forge backup dumps and repo archives use it |
+| **MCP** | Model Context Protocol | JSON-RPC over stdio/SSH — how tools talk to models |
+| **OOM** | Out Of Memory | Kernel kills the biggest process when RAM runs out — watch on migrations |
+| **TBD** | To Be Determined | Marks an unfilled fact in docs — fill by PR after executing, never guess |
+| **OSC** | Operating System Command | Terminal escape family; OSC-52 lets an app set the host clipboard |
+| **RPC** | Remote Procedure Call | Calling a function on another machine |
+| **SIGTSTP** | Signal: Terminal Stop | POSIX signal (Ctrl-Z) — tmux safety skill intercepts SIGTSTP to prevent agent suspension |
+| **SSH** | Secure Shell | Encrypted remote terminal + forced-command bridge |
+| **TAR** | Tape ARchive | Archive format (`.tar`) — combined with gzip for forge backup/volume dumps |
+| **TCP** | Transmission Control Protocol | Reliable ordered byte stream — sits under SSH, HTTP, gRPC |
+| **TLS** | Transport Layer Security | Encryption layer under HTTPS, SMTPS, LDAPS |
+| **TOML** | Tom's Obvious Minimal Language | Config file format — used for Cargo.toml, colibri manifests |
+| **TTY** | Teletypewriter | Terminal device interface — signal handling uses TTY signals |
+| **URL** | Uniform Resource Locator | Web address — used for linking to docs, dashboards, APIs |
+| **USD** | United States Dollar | Currency unit for cost tracking — all costs in USD |
+| **UUID** | Universally Unique Identifier | 128-bit ID that won't collide — used for machine-id, tasks |
+| **WAL** | Write-Ahead Log | PostgreSQL durability mechanism — data written to log first |
+| **YAML** | YAML Ain't Markup Language | Config format — CI workflows use .yml |
+| **ZIP** | Zip (archive format) | Compression/archive format — Forgejo's "Download source archive" links |
+
+### Infrastructure
+
+| Term | Stands for | Why it matters here |
+|------|------------|---------------------|
+| **ACME** | Automatic Certificate Management Environment | Let's Encrypt protocol — certbot uses it for HTTPS |
+| **BSD** | Berkeley Software Distribution | The Unix family FreeBSD belongs to |
+| **CPU** | Central Processing Unit | The main processor — probed by system-probe |
+| **DNS** | Domain Name System | Resolves hostnames → IPs, including Tailscale MagicDNS |
+| **GC** | Garbage Collection | Automatic memory reclamation — Go's GC thrashing under a tight cgroup limit was the forge's 80s-page incident signature |
+| **GPU** | Graphics Processing Unit | Required for local LLM inference and Blender |
+| **IMG** | Raw Disk Image (.img) | The Clawdie operator USB format — a raw disk image, dd/flash-written. Not ISO 9660. Prose calls it an "img". |
+| **IP** | Internet Protocol | Network addressing — every node has a Tailscale IP |
+| **ISO** | ISO 9660 Optical Filesystem Image | Optical CD/DVD format — the mfsbsd installer and VPS build. The Clawdie USB is an IMG, not this. ("ISO 8601" = a date standard; spell that out too.) |
+| **MEM** | Memory | `docker stats`'s MEM% column — the memory-ceiling half of the forge's two-cause slow-page triage |
+| **PID** | Process ID | Unix process identifier — the forge's PID-exhaustion cascade hit its container `pids_limit` cap |
+| **PIDS** | Process IDs (plural) | `docker stats`'s live-process-count column — the PID-exhaustion half of the forge's two-cause slow-page triage |
+| **PNG** | Portable Network Graphics | Lossless image format — screenshots are PNG |
+| **PTY** | Pseudo-Terminal | Virtual terminal — Kitty, tmux, and agent I/O use PTYs |
+| **RAM** | Random Access Memory | System memory — probed by system-probe |
+| **RTX** | Ray Tracing Texel eXtreme | Nvidia GPU line — detected in capability probes |
+| **SMBIOS** | System Management BIOS | Hardware info table — read by system-probe for model/serial |
+| **USB** | Universal Serial Bus | The boot medium — the Clawdie img runs from USB |
+| **VPS** | Virtual Private Server | A rented VM — OSA runs on one |
+| **VRAM** | Video RAM | GPU memory — limits local LLM model size |
+| **XDG** | X Desktop Group | Freedesktop standard for config/cache paths |
+| **XFCE** | XForms Common Environment | Lightweight FreeBSD desktop — the operator GUI surface |
+| **ZFS** | Zettabyte File System | Copy-on-write filesystem — RAID1 mirror, snapshots, send |
+
+### GIS / GURS (Slovenian geodata)
+
+The GIS/dome-planning arc (`gurs-address-lookup-mcp`, the GIS-INTEGRATION-PLAN doc in clawdie-iso, `docs/GLOSSARY-SL.md` §1) queries Slovenian public geodata over WFS. This section covers the English acronym expansions; Slovenian customer-facing display labels for the same domain terms live in `GLOSSARY-SL.md` §1-2 — the two are complementary, not duplicates.
+
+| Term | Stands for | Why it matters here |
+|------|------------|---------------------|
+| **CRS** | Coordinate Reference System | Which coordinate space a value is in (e.g. EPSG:4326 vs EPSG:3794) — mismatched CRS silently produces garbage coordinates |
+| **DMR** | Digitalni model reliefa (digital terrain model) | GURS's terrain-elevation dataset — feeds dome-site ground-slope and shadow-study calculations |
+| **EPSG** | European Petroleum Survey Group | Naming authority for CRS codes — EPSG:4326 is WGS84 (lat/lon), EPSG:3794 is Slovenia's national grid (D96/TM) |
+| **GURS** | Geodetska uprava Republike Slovenije | Slovenia's geodetic administration — the public authority behind the address register, cadastre, and orthophoto data this arc queries |
+| **OPSI** | Odprti podatki Slovenije (Open Data Slovenia) | Slovenia's general government open-data portal (podatki.gov.si) — GURS publishes its orthophoto dataset here; OPSI is the portal, not the orthophoto imagery itself |
+| **WFS** | Web Feature Service | OGC standard for querying vector geodata over HTTP (returns feature data, e.g. GeoJSON — unlike WMS, which returns map images) — the protocol `gurs-address-lookup-mcp` speaks to GURS |
+
+### Colibri internals
+
+| Term | Stands for | Why it matters here |
+|------|------------|---------------------|
+| **ADR** | Architecture Decision Record | Lightweight design doc — records why a choice was made |
+| **CI** | Continuous Integration | Automated checks on every push — fmt, clippy, wiki-lint |
+| **CLI** | Command-Line Interface | `colibri` binary — type commands in a terminal |
+| **CRUD** | Create Read Update Delete | The four basic data operations — PostgreSQL tables follow this |
+| **DDL** | Data Definition Language | SQL commands that define schema — CREATE TABLE, ALTER, etc. |
+| **ETXTBSY** | Error: Text File Busy | Errno 26 — can't write to a running binary; install(1) avoids it |
+| **OKF** | Open Knowledge Format | Google's machine-readable frontmatter spec for knowledge pages — enables trust tiers, staleness detection, provenance |
+| **OKR** | Objectives and Key Results | Google's goal-setting framework — quarterly planning |
+| **RAG** | Retrieval-Augmented Generation | LLM pattern: retrieve docs → augment prompt → generate |
+| **SLA** | Service Level Agreement | Uptime/latency guarantees — tracked in mother-hive cost dashboard |
+
+---
+
+## Auto-Generation Details
+
+### `wiki-to-okf.sh` Type Inference
+
+The script at `scripts/wiki-to-okf.sh` infers page type from filename:
+
+```bash
+case "$base" in
+  *abbrev*.md)
+    type="Glossary"
+    ;;
+  ...
+esac
+```
+
+Since the file is named `abbreviations.md`, it gets `type: Glossary` automatically.
+
+### OKF Frontmatter on Abbreviations Page
+
+```yaml
+---
+type: "Glossary"
+title: "Abbreviations"
+description: "Expansions for acronyms and technical terms used across Colibri wikis. When a new term enters a wiki page, add it here so the next reader doesn't have to search."
+tags: [abbreviations, glossary]
+status: "stable"
+stale_after: "2026-12-31"
+generated:
+  by: "human:sam"
+  at: "2026-06-15T10:00:00Z"
+verified:
+  - by: "human:sam"
+    at: "2026-06-20T09:00:00Z"
+---
+```
+
+### Wiki-Lint Validation
+
+The `wiki-lint` script validates:
+
+1. **Undefined abbreviations** — if a wiki page uses `A2A` but it's not in `abbreviations.md`, lint fails
+2. **Dangling references** — links to `abbreviations.md#A2A` must match a table row
+3. **Resurrected names** — checks against the naming ledger for old terms that shouldn't reappear
+
+### Adding New Abbreviations
+
+1. Edit `docs/wiki/abbreviations.md` in the Colibri repo
+2. Add a row to the appropriate table (Protocols, Infrastructure, GIS, or Colibri internals)
+3. Run `./scripts/wiki-to-okf.sh --verify` to update frontmatter and run lint
+4. Commit — pre-push hook runs `ci-checks.sh --strict` including wiki-lint
+
+---
+
+## Source
+
+Canonical source: [`docs/wiki/abbreviations.md`](https://code.smilepowered.org/clawdie/colibri/src/branch/main/docs/wiki/abbreviations.md) in the Colibri repository.
+
+Last synced: 2026-08-08 (from commit 0c964cd / 5d3925f)

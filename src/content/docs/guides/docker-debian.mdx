@@ -1,0 +1,185 @@
+---
+title: Docker Desktop in Linux Debian 13
+description: Podroben vodič za namestitev Docker Desktop na Debian 13 s pravilnim upravljanjem poverilnic.
+---
+
+Podroben vodič za namestitev Docker Desktop na Linux Debian 13 sistemu.
+
+## Predpogoji
+
+- Debian 13 (ali 12) sistem
+- Internetna povezava
+- Dostop do terminala
+
+## Korak 1: Dodaj Dockerjev uradni repozitorij
+
+Najprej namesti potrebne odvisnosti:
+
+```bash
+sudo apt update
+sudo apt install ca-certificates curl
+```
+
+Ustvari mapo za ključe in dodaj Dockerjev GPG ključ:
+
+```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+```
+
+Dodaj Dockerjev uradni repozitorij:
+
+```bash
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+```
+
+## Korak 2: Odstrani konfliktne pakete
+
+Če imaš Docker nameščen iz Debianovih repozitorijev, lahko obstajajo konfliktni paketi. Odstrani jih:
+
+```bash
+sudo apt remove docker-buildx docker-compose
+```
+
+## Korak 3: Namesti Docker CE CLI
+
+Posodobi seznam paketov in namesti uradni Docker CLI:
+
+```bash
+sudo apt update
+sudo apt install docker-ce-cli
+```
+
+Počisti neuporabljene odvisnosti:
+
+```bash
+sudo apt autoremove
+```
+
+## Korak 4: Prenesi in namesti Docker Desktop
+
+Prenesi Docker Desktop DEB paket s [Docker Desktop strani](https://www.docker.com/products/docker-desktop) ali z wget:
+
+```bash
+cd ~/Downloads
+wget https://desktop.docker.com/linux/main/amd64/docker-desktop-amd64.deb
+```
+
+Namesti Docker Desktop:
+
+```bash
+sudo apt install ./docker-desktop-amd64.deb
+```
+
+## Korak 5: Nastavi GPG ključ za upravljanje poverilnic
+
+Generiraj GPG ključ (potreben za varno shranjevanje poverilnic):
+
+```bash
+gpg --generate-key
+```
+
+Sledi navodilom za vnos podatkov. Izpis bo pokazal tvoj GPG ključ ID, ki izgleda tako:
+
+```
+E64B253FC0A9C047E6FAD55E8B1D86868A885711
+```
+
+Shrani ta ključ ID — potreboval ga boš v naslednjem koraku.
+
+## Korak 6: Konfiguriraj Docker poverilnice
+
+Uredi Docker config datoteko:
+
+```bash
+nano ~/.docker/config.json
+```
+
+Spremeni `"credsStore": "desktop"` v `"credsStore": "pass"`:
+
+```json
+{
+    "auths": {},
+    "credsStore": "pass",
+    "currentContext": "desktop-linux"
+}
+```
+
+Shrani datoteko (Ctrl+O, Enter, Ctrl+X v nano).
+
+## Korak 7: Inicializiraj Pass upravitelj gesel
+
+Inicializiraj `pass` s tvojim GPG ključem (zamenjaj s svojim ključem ID):
+
+```bash
+pass init E64B253FC0A9C047E6FAD55E8B1D86868A885711
+```
+
+Preveri, da je `docker-credential-pass` nameščen:
+
+```bash
+which docker-credential-pass
+```
+
+Prikazati bi moralo `/usr/bin/docker-credential-pass`.
+
+## Korak 8: Zaženi Docker Desktop
+
+Kot navaden uporabnik (ne root), zaženi Docker Desktop:
+
+```bash
+systemctl --user start docker-desktop
+```
+
+Preveri, da teče:
+
+```bash
+systemctl --user status docker-desktop
+```
+
+## Korak 9: Prijava v Docker
+
+Odpri Docker Desktop iz menija aplikacij (pod "Development" v KDE). Klikni "G" ikono za prijavo z Google računom in dokonči postopek avtentikacije.
+
+Tvoje poverilnice bodo zdaj varno shranjene z uporabo `pass` in tvojega GPG ključa.
+
+## Korak 10: Preveri namestitev
+
+Testiraj, da Docker deluje:
+
+```bash
+docker version
+docker run hello-world
+```
+
+## Neobvezno: Omogoči Docker Desktop ob zagonu
+
+Za avtomatski zagon Docker Desktop ob prijavi:
+
+```bash
+systemctl --user enable docker-desktop
+```
+
+## Odpravljanje težav
+
+**Docker Desktop se ne zažene:**
+- Prepričaj se, da poganjač ukaze kot navaden uporabnik, ne root
+- Preveri status z: `systemctl --user status docker-desktop`
+
+**Prijava ne uspe:**
+- Preveri, da je `pass` inicializiran: `pass`
+- Preveri GPG ključ: `gpg --list-keys`
+- Ponovno zaženi Docker Desktop: `systemctl --user restart docker-desktop`
+
+**Napake dovoljenja:**
+- Dodaj uporabnika v docker skupino: `sudo usermod -aG docker $USER`
+- Odjavi se in ponovno prijavi, da spremembe začnejo veljati
+
+## Reference
+
+- [Docker Desktop dokumentacija](https://docs.docker.com/desktop/)
+- [Docker Desktop upravljanje poverilnic za Linux](https://docs.docker.com/desktop/setup/sign-in/#credentials-management-for-linux-users)

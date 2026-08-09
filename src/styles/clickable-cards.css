@@ -1,0 +1,37 @@
+/* Clickable Card Styles for Landing Pages */
+
+.clickable-cards a {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  transition: transform 0.2s ease;
+}
+
+.clickable-cards a:hover {
+  transform: translateY(-4px);
+}
+
+.clickable-cards .card {
+  height: 100%;
+  border: 2px solid var(--sl-color-gray-5);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.clickable-cards a:hover .card {
+  border-color: var(--sl-color-accent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+/* Make icons larger and more visible */
+.clickable-cards .card svg {
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+  color: var(--sl-color-accent) !important;
+}
+
+/* Style the card title */
+.clickable-cards .card-title {
+  color: var(--sl-color-accent);
+  font-size: 1.25rem;
+  font-weight: 600;
+}

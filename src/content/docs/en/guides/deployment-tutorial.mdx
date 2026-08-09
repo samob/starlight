@@ -13,7 +13,21 @@ This tutorial guides you through deploying an Astro Starlight site using Docker 
 * Docker and Docker Compose installed
 * Domain name (e.g., `<example.com>`)
 * Basic knowledge of Linux command line
+* Node.js 18.17 or newer
 
+## Setting Up Your Astro Project
+
+If you don't already have an Astro project, create one using the official CLI:
+
+```bash
+npm create astro@latest my-site
+```
+
+The wizard will guide you through your options (default: Starlight, empty configuration, etc.). Once created, navigate to your project directory:
+
+```bash
+cd my-site
+```
 
 ## Architecture Overview
 
@@ -75,6 +89,8 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
@@ -86,7 +102,7 @@ services:
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /etc/docker-compose/<your_site>/letsencrypt:/letsencrypt
+      - letsencrypt:/letsencrypt
     networks:
       - web
     restart: unless-stopped
@@ -105,6 +121,9 @@ services:
     networks:
       - web
     restart: unless-stopped
+
+volumes:
+  letsencrypt:
 
 networks:
   web:
@@ -198,7 +217,7 @@ networks:
 
 3. **Check logs**
     ```bash
-    sudo systemctl logs docker-compose@<your_site>
+    sudo journalctl -u docker-compose@<your_site> -f
     ```
 
 </Steps>

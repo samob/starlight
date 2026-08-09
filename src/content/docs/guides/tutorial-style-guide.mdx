@@ -1,0 +1,155 @@
+---
+title: Kako pišem navodila
+description: Moj stil in struktura za pisanje tehničnih navodil — jasno, korak za korakom, brez preskakovanja.
+---
+
+To je moj osebni vodič za pisanje tehničnih navodil. Uporabljam ga kot referenco, ko dokumentiram nove teme.
+
+## Načela
+
+1. **Ne preskoči korakov** — tudi če se zdijo očitni
+2. **Bralec ne ve, kar veš ti** — razloži kontekst
+3. **Pokaži, ne samo povej** — primeri kode > abstraktne razlage
+4. **Testiraj navodila** — preden objaviš, sledi svojim korakom
+
+## Struktura navodil
+
+### Uvod
+
+Prvi odstavek razloži:
+- Kaj bo bralec dosegel
+- Zakaj je to uporabno
+- Kakšne predpogoje potrebuje
+
+**Primer:**
+> Ta navodila te vodijo skozi namestitev Docker na Debian strežnik. Na koncu boš imel delujoč Docker environment pripravljen za deploy containerjev.
+
+### Predpogoji
+
+Jasno navedi, kaj mora bralec imeti PREDEN začne:
+
+````markdown
+**Predpogoji**
+
+- Strežnik z Debian/Ubuntu
+- Root ali sudo dostop
+- Osnovno znanje Linux ukazne vrstice
+````
+
+Če obstajajo druga navodila za predpogoje, jih poveži.
+
+### Koraki
+
+Vsak korak:
+- Ima jasen naslov ("Korak 1 - Namestitev Docker")
+- Gradi na prejšnjem koraku
+- Vključuje ukaze, ki jih lahko bralec kopira
+- Po potrebi razloži, kaj ukaz naredi
+
+**Primer strukture:**
+
+````markdown
+## Korak 1 - Namestitev Docker
+
+Najprej posodobi seznam paketov:
+
+```bash
+sudo apt update
+```
+
+Nato namesti Docker:
+
+```bash
+sudo apt install docker.io
+```
+
+Preveri, da Docker deluje:
+
+```bash
+sudo docker --version
+```
+````
+
+### Podkoraki
+
+Za kompleksne korake uporabi podkorake:
+
+````markdown
+## Korak 2 - Konfiguracija
+
+### Korak 2.1 - Ustvari konfiguracijo
+...
+
+### Korak 2.2 - Nastavi pravice
+...
+````
+
+### Neobvezni koraki
+
+Označi korake, ki niso nujni, a so koristni:
+
+````markdown
+## Korak 5 - Nastavitev logiranja (neobvezno)
+
+Ta korak ni nujen, vendar pomaga pri debuggingu...
+````
+
+### Zaključek
+
+Na koncu:
+- Povzemi, kaj je bralec dosegel
+- Predlagaj naslednje korake
+- Poveži na dodatne vire
+
+````markdown
+## Zaključek
+
+Sedaj imaš delujoč Docker environment z avtomatskim zagonom ob restartu.
+
+**Naslednji koraki:**
+- [Docker Compose navodila](/guides/docker-compose/)
+- [Uradna Docker dokumentacija](https://docs.docker.com/)
+````
+
+## Terminologija
+
+V navodilih uporabljam te placeholder-je:
+
+| Placeholder | Pomen |
+|-------------|-------|
+| `<your_domain>` | Domena bralca (npr. example.com) |
+| `<your_server_ip>` | IP naslov strežnika |
+| `<your_username>` | Uporabniško ime |
+| `<your_email>` | Email naslov |
+
+**Nikoli** ne uporabljaj pravih IP naslovov ali gesel v navodilih.
+
+## Primeri kode
+
+Vedno označi jezik za syntax highlighting:
+
+````markdown
+```bash
+sudo systemctl start docker
+```
+
+```python
+print("Hello, World!")
+```
+
+```yaml
+services:
+  web:
+    image: nginx
+```
+````
+
+## Posnetki zaslona
+
+Če so potrebni, jih shrani v `images/` mapo ob navodilih.
+
+Uporabi posnetke le kadar besedilo ni dovolj — npr. za GUI korake.
+
+---
+
+*Ta vodič posodabljam ko odkrijem boljše prakse.*

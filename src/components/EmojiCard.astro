@@ -1,0 +1,69 @@
+---
+export interface Props {
+  title: string;
+  emoji: string;
+  href: string;
+}
+
+const { title, emoji, href } = Astro.props;
+---
+
+<a href={href} class="emoji-card">
+  <div class="emoji">{emoji}</div>
+  <h3 class="title">{title}</h3>
+  <div class="content">
+    <slot />
+  </div>
+</a>
+
+<style>
+  .emoji-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 1.5rem;
+    background: var(--sl-color-bg-nav);
+    border: 2px solid var(--sl-color-gray-5);
+    border-radius: 1rem;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.3s ease;
+    height: 100%;
+  }
+
+  .emoji-card:hover {
+    transform: translateY(-6px);
+    border-color: var(--sl-color-accent);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  }
+
+  .emoji {
+    font-size: 3.5rem;
+    line-height: 1;
+    margin-bottom: 1rem;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
+    transition: transform 0.3s ease;
+  }
+
+  .emoji-card:hover .emoji {
+    transform: scale(1.1);
+  }
+
+  .title {
+    color: var(--sl-color-accent);
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0 0 0.75rem 0;
+  }
+
+  .content {
+    color: var(--sl-color-text);
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  .content :global(p) {
+    margin: 0;
+  }
+</style>

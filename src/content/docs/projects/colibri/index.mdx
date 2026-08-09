@@ -1,0 +1,25 @@
+---
+title: Colibri
+description: Tokenomics Trifecta — Control plane for autonomous AI agents (Rust + Go)
+---
+
+## Colibri — Tokenomics Trifecta (Rust + Go) — *Work in Progress*
+
+Control plane for autonomous AI agents with **tokenomics trifecta**: performance / speed / cost. Target metric: **cost-per-intelligence > cost-per-token**.
+
+⚠️ **Note:** Still in active development. Components work individually, but full chain (boot → seed → Pi agent → Colibri daemon → Mother/Hive → benchmark) not end-to-end validated on hardware.
+
+**Technologies:** Rust (core: daemon, CLI, zot) · Go (services: API, MCP bridge, cost dashboard) · PostgreSQL + pgvector · bhyve VMs · Bastille jails
+
+**Components:** [View status matrix in wiki →](https://code.smilepowered.org/clawdie/colibri/src/branch/main/docs)
+
+- `colibri-daemon` (Rust) — core loop, systemd-style supervision ✅
+- `colibri-cli` (Rust) — basics, missing advanced subcommands 🔄
+- `zot` agent harness (Rust) — NDJSON RPC, subtask delegation, tool interception ✅
+- `colibri-mcp` (Go) — SSH-stdio bridge, tool proxy ✅
+- `cost-dashboard` (Go) — in development 🔄
+- `llama.cpp benchmarks` (Rust/Go) — `/v1` timings object for ms/tok ✅
+
+**Documentation:** Colibri wiki — 44 pages (LLM benchmarks, architecture decisions, OKF v0.2, pre-push hooks)
+
+**Blockers for end-to-end:** bhyve spawn logic in ISO 🔄 · pgvector migration script 🔄 · cost-dashboard integration 🔄 · hardware test on Valhala 📅

@@ -13,8 +13,23 @@ Ta vodila vas vodi skozi postopek uvajanja vaše Astro Starlight strani na produ
 * Nameščena Docker in Docker Compose
 * Domena (npr. `<example.com>`)
 * Osnovno znanje Linux ukazne vrstice
+* Node.js 18.17 ali novejše
 
-## Pregled arhitekture
+## Nastavljanje Astro projekta
+
+Če še nimate Astro projekta, ga ustvarite s privzetim predlogo:
+
+```bash
+npm create astro@latest my-site
+```
+
+Vodič vas bo poprosil za izbire (privzeto: Starlight, prazna konfiguracija itd.). Ko je ustvarjen, pojdite v imenik projekta:
+
+```bash
+cd my-site
+```
+
+Pregled arhitekture
 
 ```
 Internet → Traefik (SSL/Vrata 443) → Busybox httpd (Statične datoteke)
@@ -74,6 +89,8 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
@@ -85,7 +102,7 @@ services:
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /etc/docker-compose/<your_site>/letsencrypt:/letsencrypt
+      - letsencrypt:/letsencrypt
     networks:
       - web
     restart: unless-stopped
@@ -104,6 +121,9 @@ services:
     networks:
       - web
     restart: unless-stopped
+
+volumes:
+  letsencrypt:
 
 networks:
   web:
@@ -197,7 +217,7 @@ networks:
 
 3. **Preverite dnevnike**
     ```bash
-    sudo systemctl logs docker-compose@<your_site>
+    sudo journalctl -u docker-compose@<your_site> -f
     ```
 
 </Steps>
