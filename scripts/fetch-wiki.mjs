@@ -4,7 +4,6 @@
  * Run: node scripts/fetch-wiki.mjs
  */
 
-
 import { promises as fs } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,27 +75,48 @@ function fetchWithTimeout(url, options = {}) {
   ]);
 }
 
-function convertToMdx(content, filename) {
-  // The Forgejo pages have OKF frontmatter in a table format at the top
-  // We need to extract it and convert to YAML frontmatter
-  
-  // Skip the Forgejo UI wrapper - the raw content should be clean
-  // But the raw endpoint returns the actual file content
-  
-  // If content starts with OKF table, convert it
-  if (content.includes('source_of_truth') || content.includes('okf_version')) {
-    // Extract the OKF frontmatter tables and convert to YAML
-    // For now, keep as-is but ensure proper frontmatter
-    return content;
+function extractTitleFromFrontmatter(frontmatter) {
+  const match = frontmatter.match(/title:\s*"([^"]*)"/);
+  return match ? match[1] : null;
+}
+
+function removeDuplicateHeading(content) {
+  // Split frontmatter and rest
+  const frontmatterMatch = content.match(/^---[\s\S]*?---/);
+  if (!frontmatterMatch) return content;
+
+  const frontmatter = frontmatterMatch[0];
+  const rest = content.substring(frontmatterMatch[0].length);
+
+  const title = extractTitleFromFrontmatter(frontmatter);
+  if (!title) return content;
+
+  // Find first heading line in rest
+  const headingMatch = rest.match(/^\s*(#+)\s*([^\n]*)/m);
+  if (!headingMatch) return content;
+
+  const headingLevel = headingMatch[1];
+  const headingText = headingMatch[2].trim();
+
+  // If it's an H1 and matches the title, remove it
+  if (headingLevel === '#' && headingText === title) {
+    // Remove the heading line and any following blank line (including newline after)
+    const newRest = rest.replace(/^\s*#\s*[^\n]*\n\s*/, '');
+    return frontmatter + newRest;
   }
-  
-  // If no frontmatter, add basic one
+
+  return content;
+}
+
+function convertToMdx(content, filename) {
+  // If no frontmatter, add a basic one
   if (!content.startsWith('---')) {
     const title = filename.replace('.md', '').replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     return `---\ntitle: ${title}\ndescription: Colibri wiki page\n---\n\n${content}`;
   }
-  
-  return content;
+
+  // Remove duplicate H1 heading that matches frontmatter title
+  return removeDuplicateHeading(content);
 }
 
 async function fetchAndSave(page) {
@@ -114,9 +134,9 @@ async function fetchAndSave(page) {
       await fs.writeFile(targetPath, mdxContent, 'utf8');
     }
     
-    console.log(`  �� Saved to ${LOCALES.length} locales`);
+    console.log(`  ���� �� Saved to ${LOCALES.length} locales`);
   } catch (err) {
-    console.error(`  �� Failed: ${err.message}`);
+    console.error(`  ���� �� Failed: ${err.message}`);
   }
 }
 
