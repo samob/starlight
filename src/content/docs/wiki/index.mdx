@@ -34,7 +34,7 @@ These rules keep the wiki a maintainable artifact, not a second source of truth:
    live; they link to code/docs rather than re-explaining implementation. When a
    decision ships, slim its page to "how it works + link."
 2. **Link, don't duplicate.** Reference code as `path/to/file.rs:line` and other
-   wiki pages with relative links (`[label](./page.md)`) — Forge-clickable, the
+   wiki pages with relative links (`[label](page)`) — Forge-clickable, the
    equivalent of Obsidian `[[wikilinks]]` adapted to a repo.
 3. **One decision per page** where practical; cross-link liberally.
 4. **Flag, don't silently overwrite.** When new code contradicts a page, note
@@ -50,50 +50,49 @@ Skripta [`wiki-lint`](https://code.smilepowered.org/clawdie/colibri/src/commit/f
 
 | Page                                                      | What it covers                                                                                                                                 |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| [agent-harness](./agent-harness.md)                       | The zot (agent) + Colibri (control plane) split; autospawn + RPC driver                                                                        |
-| [task-dispatch-flow](./task-dispatch-flow.md)             | End-to-end task path: queued → claimed → spawn → register → dispatch → cost; why a task stalls                                                 |
-| [factory-model](./factory-model.md)                       | How Colibri maps to the \"factory model\" architecture — harness, spectrum, conductor/orchestrator, economics                                  |
-| [doctor](./doctor.md)                                     | `colibri doctor` self-diagnosis (check battery) + `colibri upgrade` self-rebuild; cross-platform build split                                   |
-| [agent-events-reference](./agent-events-reference.md)     | Per-harness zot event reference, Glasspane mappings, and verified transcript fields                                                            |
-| [cost-model](./cost-model.md)                             | Byte-stable prefixes, cache-hit metering, auto-escalation, T14 compaction                                                                      |
-| [deepseek-pricing](./deepseek-pricing.md)                 | DeepSeek V4 per-token pricing — regular + peak-valley rates, UTC + Ljubljana timezone windows                                                  |
-| [glm-pricing](./glm-pricing.md)                           | GLM-5 series per-token pricing (z.ai GLM Coding Plan) — GLM-5.2 flagship + GLM-5-Turbo; no peak-valley mechanism                               |
-| [tokenomics](./tokenomics.md)                             | The three cost levers — timing (valley), caching (prefix), budget (cost modes); the map that links the detail pages                            |
-| [glasspane](./glasspane.md)                               | Agent state machine, JSONL streaming, AgentRuntime taxonomy, snapshot API                                                                      |
-| [operator-attention](./operator-attention.md)             | The derived "needs the operator" view: attention predicate, TUI bar/jump/filter, edge-triggered terminal alerts                                |
-| [headroom-sidecar](./headroom-sidecar.md)                 | Optional tool-result compression sidecar and its Unix-socket protocol                                                                          |
-| [jail-confinement](./jail-confinement.md)                 | Persistent vs ephemeral jails, priv-mode policy, reuse of spawner confinement for MCP servers                                                  |
-| [mother-hive](./mother-hive.md)                           | Mother MCP architecture — forced-command SSH, single-home-in-colibri, peer auth, key-on-seed                                                   |
-| [ssh-bridge](./ssh-bridge.md)                             | SSH forced-command bridge call flow — USB→mother JSON-RPC transport, security model, troubleshooting                                           |
-| [abbreviations](./abbreviations.md)                       | Expansions for acronyms and technical terms — add new ones as they appear                                                                      |
-| [hive-routing](./hive-routing.md)                         | Hive member identity (machine UUID), capability matrix + local LLM probes, cost-aware task routing                                             |
-| [hive-pane](./hive-pane.md)                               | Glasspane for the hive — multi-node cost observability, A2A discovery, and operator board                                                      |
-| [cost-dashboard](./cost-dashboard.md)                     | Mother-side cost observability — human gallery + JSON, screenshot proof linked from cost rows                                                  |
-| [a2a-complexity-audit](./a2a-complexity-audit.md)         | A2A code complexity impact — 6-protocol surface audit, when A2A pays off                                                                       |
-| [model-selection-and-eval](./model-selection-and-eval.md) | Eval harness + eval-driven model selection — Phases 1–3 shipped, Phase 4 (cloud eval) planned                                                  |
-| [naming-decisions](./naming-decisions.md)                 | Ledger of harness-neutral / architecture renames — shipped and in-flight                                                                       |
-| [daemon-not-demon](./daemon-not-demon.md)                 | Why we say daemon (helper spirit) not demon (bad spirit) — English + Slovenian                                                                 |
-| [layered-soul](./layered-soul.md)                         | How Colibri consumes the layered-soul reviewed-context repo today vs planned                                                                   |
-| [task-board](./task-board.md)                             | Capability match scoring, cron scheduling, intake drain, SQLite backing                                                                        |
-| [pull-requests](./pull-requests.md)                       | PR workflow — branching, review, gates, merge conventions                                                                                      |
-| [quality-gates](./quality-gates.md)                       | `ci-checks.sh` as the pre-merge gate; why drift reached `main` before                                                                          |
-| [verify-before-execute](./verify-before-execute.md)       | Verify in the target context, surface failures — the xkbcomp borrowed-tool lesson, the chroot pattern, TUI/GUI application                     |
-| [contracts](./contracts.md)                               | Stable JSON schemas (run-manifest, runtime-inventory, provider-test), fixture tests                                                            |
-| [store-schema](./store-schema.md)                         | SQLite coordination schema and migration discipline                                                                                            |
-| [external-mcp](./external-mcp.md)                         | MCP bridge for editors + external stdio MCP host; read/write/external-call gates                                                               |
-| [operator-cli](./operator-cli.md)                         | The `colibri` CLI as a thin typed Unix-socket client over the daemon API                                                                       |
-| [tui](./tui.md)                                           | Terminal dashboard client (colibri-tui) vs the colibri-glasspane state machine                                                                 |
-| [terminal](./terminal.md)                                 | Terminal capability decision (Kitty, extended-key reporting, tmux passthrough, SSH terminfo)                                                   |
-| [tmux-safety](./tmux-safety.md)                           | Why Colibri must prevent agents from killing the host tmux server — two-layer defense, skill, jail confinement                                 |
-| [runtime-inventory](./runtime-inventory.md)               | Host runtime inventory + watchdog status reader; additive, read-only integrations                                                              |
-| [skills-catalog](./skills-catalog.md)                     | Read-only runtime consumer for reviewed skill artifacts                                                                                        |
-| [vault-provision](./vault-provision.md)                   | Vaultwarden-driven env-file provisioning into jails after agent spawn                                                                          |
-| [deployment](./deployment.md)                             | Host installer (clawdie): ZFS layout, rc.d/systemd service, dry-run safety                                                                     |
-| [ts-legacy](./ts-legacy.md)                               | Retired clawdie-ai TypeScript codebase — what it did, what survived into colibri/hermes-bsd, what was dropped                                  |
-| [rust-glossary](./rust-glossary.md)                       | Quick reference for Rust terms in the codebase: serde, Result/Option, Arc/Box, derive macros                                                   |
-| [ts-legacy](./ts-legacy.md)                               | Retired clawdie-ai TypeScript codebase — what it did, what survived into colibri/hermes-bsd, what was dropped                                  |
-| [bare-metal-freebsd](./bare-metal-freebsd.md)             | FreeBSD on physical hardware (HP ML350p) — iLO, IPMI, USB boot quirks, sensor monitoring gaps                                                  |
-| [updating-a-node](./updating-a-node.md)                   | Base vs packages: freebsd-update on release hosts, pkg upgrade on pkgbase hosts, boot environments, why never to mix                           |
-| [forge-ops](./forge-ops.md)                               | The forge VPS (code.smilepowered.org): topology, two-artifact backup contract, one-major-hop upgrades, repo-archive trap, jail-restore project |
-| [llama-cpp](./llama-cpp.md)                               | Local LLM inference with llama.cpp — install, model selection, DeepSeek distills, memory reality, hive integration                             |
-| [llama-cpp-benchmarks](./llama-cpp-benchmarks.md)         | Measured 8B vs 14B on valhala (Xeon E5-2620) — tok/s, prompt speed, coexistence, router tier recommendations                                   |
+| [agent-harness](agent-harness)                       | The zot (agent) + Colibri (control plane) split; autospawn + RPC driver                                                                        |
+| [task-dispatch-flow](task-dispatch-flow)             | End-to-end task path: queued → claimed → spawn → register → dispatch → cost; why a task stalls                                                 |
+| [factory-model](factory-model)                       | How Colibri maps to the \"factory model\" architecture — harness, spectrum, conductor/orchestrator, economics                                  |
+| [doctor](doctor)                                     | `colibri doctor` self-diagnosis (check battery) + `colibri upgrade` self-rebuild; cross-platform build split                                   |
+| [agent-events-reference](agent-events-reference)     | Per-harness zot event reference, Glasspane mappings, and verified transcript fields                                                            |
+| [cost-model](cost-model)                             | Byte-stable prefixes, cache-hit metering, auto-escalation, T14 compaction                                                                      |
+| [deepseek-pricing](deepseek-pricing)                 | DeepSeek V4 per-token pricing — regular + peak-valley rates, UTC + Ljubljana timezone windows                                                  |
+| [glm-pricing](glm-pricing)                           | GLM-5 series per-token pricing (z.ai GLM Coding Plan) — GLM-5.2 flagship + GLM-5-Turbo; no peak-valley mechanism                               |
+| [tokenomics](tokenomics)                             | The three cost levers — timing (valley), caching (prefix), budget (cost modes); the map that links the detail pages                            |
+| [glasspane](glasspane)                               | Agent state machine, JSONL streaming, AgentRuntime taxonomy, snapshot API                                                                      |
+| [operator-attention](operator-attention)             | The derived "needs the operator" view: attention predicate, TUI bar/jump/filter, edge-triggered terminal alerts                                |
+| [headroom-sidecar](headroom-sidecar)                 | Optional tool-result compression sidecar and its Unix-socket protocol                                                                          |
+| [jail-confinement](jail-confinement)                 | Persistent vs ephemeral jails, priv-mode policy, reuse of spawner confinement for MCP servers                                                  |
+| [mother-hive](mother-hive)                           | Mother MCP architecture — forced-command SSH, single-home-in-colibri, peer auth, key-on-seed                                                   |
+| [ssh-bridge](ssh-bridge)                             | SSH forced-command bridge call flow — USB→mother JSON-RPC transport, security model, troubleshooting                                           |
+| [abbreviations](abbreviations)                       | Expansions for acronyms and technical terms — add new ones as they appear                                                                      |
+| [hive-routing](hive-routing)                         | Hive member identity (machine UUID), capability matrix + local LLM probes, cost-aware task routing                                             |
+| [hive-pane](hive-pane)                               | Glasspane for the hive — multi-node cost observability, A2A discovery, and operator board                                                      |
+| [cost-dashboard](cost-dashboard)                     | Mother-side cost observability — human gallery + JSON, screenshot proof linked from cost rows                                                  |
+| [a2a-complexity-audit](a2a-complexity-audit)         | A2A code complexity impact — 6-protocol surface audit, when A2A pays off                                                                       |
+| [model-selection-and-eval](model-selection-and-eval) | Eval harness + eval-driven model selection — Phases 1–3 shipped, Phase 4 (cloud eval) planned                                                  |
+| [naming-decisions](naming-decisions)                 | Ledger of harness-neutral / architecture renames — shipped and in-flight                                                                       |
+| [daemon-not-demon](daemon-not-demon)                 | Why we say daemon (helper spirit) not demon (bad spirit) — English + Slovenian                                                                 |
+| [layered-soul](layered-soul)                         | How Colibri consumes the layered-soul reviewed-context repo today vs planned                                                                   |
+| [task-board](task-board)                             | Capability match scoring, cron scheduling, intake drain, SQLite backing                                                                        |
+| [pull-requests](pull-requests)                       | PR workflow — branching, review, gates, merge conventions                                                                                      |
+| [quality-gates](quality-gates)                       | `ci-checks.sh` as the pre-merge gate; why drift reached `main` before                                                                          |
+| [verify-before-execute](verify-before-execute)       | Verify in the target context, surface failures — the xkbcomp borrowed-tool lesson, the chroot pattern, TUI/GUI application                     |
+| [contracts](contracts)                               | Stable JSON schemas (run-manifest, runtime-inventory, provider-test), fixture tests                                                            |
+| [store-schema](store-schema)                         | SQLite coordination schema and migration discipline                                                                                            |
+| [external-mcp](external-mcp)                         | MCP bridge for editors + external stdio MCP host; read/write/external-call gates                                                               |
+| [operator-cli](operator-cli)                         | The `colibri` CLI as a thin typed Unix-socket client over the daemon API                                                                       |
+| [tui](tui)                                           | Terminal dashboard client (colibri-tui) vs the colibri-glasspane state machine                                                                 |
+| [terminal](terminal)                                 | Terminal capability decision (Kitty, extended-key reporting, tmux passthrough, SSH terminfo)                                                   |
+| [tmux-safety](tmux-safety)                           | Why Colibri must prevent agents from killing the host tmux server — two-layer defense, skill, jail confinement                                 |
+| [runtime-inventory](runtime-inventory)               | Host runtime inventory + watchdog status reader; additive, read-only integrations                                                              |
+| [skills-catalog](skills-catalog)                     | Read-only runtime consumer for reviewed skill artifacts                                                                                        |
+| [vault-provision](vault-provision)                   | Vaultwarden-driven env-file provisioning into jails after agent spawn                                                                          |
+| [deployment](deployment)                             | Host installer (clawdie): ZFS layout, rc.d/syst) service, dry-run safety                                                                     |
+| [ts-legacy](ts-legacy)                               | Retired clawdie-ai TypeScript codebase — what it did, what survived into colibri/hermes-bsd, what was dropped                                  |
+| [rust-glossary](rust-glossary)                       | Quick reference for Rust terms in the codebase: serde, Result/Option, Arc/Box, derive macros                                                   |
+| [bare-metal-freebsd](bare-metal-freebsd)             | FreeBSD on physical hardware (HP ML350p) — iLO, IPMI, USB boot quirks, sensor monitoring gaps                                                  |
+| [updating-a-node](updating-a-node)                   | Base vs packages: freebsd-update on release hosts, pkg upgrade on pkgbase hosts, boot environments, why never to mix                           |
+| [forge-ops](forge-ops)                               | The forge VPS (code.smilepowered.org): topology, two-artifact backup contract, one-major-hop upgrades, repo-archive trap, jail-restore project |
+| [llama-cpp](llama-cpp)                               | Local LLM inference with llama.cpp — install, model selection, DeepSeek distills, memory reality, hive integration                             |
+| [llama-cpp-benchmarks](llama-cpp-benchmarks)         | Measured 8B vs 14B on valhala (Xeon E5-2620) — tok/s, prompt speed, coexistence, router tier recommendations                                   |
