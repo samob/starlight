@@ -49,22 +49,6 @@ export default defineConfig({
                         },
                         slug: 'cv',
                     },
-                    {
-                        label: 'Osebne lastnosti',
-                        translations: {
-                            en: 'Personal Qualities',
-                            hr: 'Osobni značaj',
-                        },
-                        slug: 'cv/personal-qualities',
-                    },
-                    {
-                        label: 'Tehnične veščine',
-                        translations: {
-                            en: 'Technical Skills',
-                            hr: 'Tehničke vještine',
-                        },
-                        slug: 'cv/tech-skills',
-                    },
                 ],
             },
             {

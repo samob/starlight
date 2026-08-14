@@ -1,46 +1,65 @@
 ---
 title: Životopis
-description: Osobni podaci, obrazovanje i povijest zaposlenja Sama Blatnika
+description: AI Agentički dosežci i projekti Sama Blatnika
 ---
 
 import profileImage from '~/assets/samob.jpeg';
 import ProfileImage from '~/components/ProfileImage.astro';
 
-<ProfileImage src={profileImage} alt="Samo Blatnik" />
+<ProfileImage src={profileImage} alt="Samo Blatnik" variant="center" />
 
-## Osobni podaci
-- **Ime i prezime:** Samo (Milojević) Blatnik
+## O meni
+
+**Samo Blatnik** — IT veteran (15+ godina) → AI Agent Developer. Zadnje 2 godine isključivo razvijam **avtonomne AI agente**, **agent harness-e** i **orčestracijske sustave**. Moja filozofija: *plain vanilla is the best* — jednostavne, razumljive, održive rješenja.
+
 - **Lokacija:** Novo mesto, Slovenija
-- **Profesija:** IT podrško osoblje / Razvojni programer
 - **Jezici:** Slovenski, Engleski, Hrvatski
+- **Kontakt:** [samo.blatnik@gmail.com](mailto:samo.blatnik@gmail.com) | [LinkedIn](https://www.linkedin.com/in/samob/) | [GitHub](https://github.com/samob)
 
+---
 
-## Obrazovanje
-- **Osnovna škola:** Osnovna šola Katja Rupena Novo mesto.
-- **Srednja škola:** Srednja šola tehnične in zdravstvene usmeritve (SŠTZU) Novo mesto - smjer Građevinski tehničar.
+## 🎯 AI Agentika — Ključni dosezi
 
-## Služba u slovenskoj vojsci
-- Treća generacija - inženirski vod.
+| Doseg | Tehnologije | Status |
+|-------|-------------|--------|
+| **Clawdie ISO** — Bootable FreeBSD 15 USB image s ugrađenim Pi agentom, Colibri daemon, ZFS RAID1, bhyve VMs, Bastille jails | FreeBSD, ZFS, bhyve, Bastille, poudriere, Rust/Go | ✅ 0.12.0 objavljeno, 0.13.0 u razvoju |
+| **Colibri** — Control plane za avtonomne agente s tokenomics trifektom (performance/speed/cost) | Rust (daemon, CLI, Zot), Go (MCP bridge, cost dashboard), pgvector | 🔄 Aktivan razvoj |
+| **Herdr** — Terminal workspace manager (ratatui, PTY, tmux-style) za agent runtime | Rust, ratatui, SSH attach | ✅ Objavljeno na herdr.dev |
+| **Zot Agent Harness** — NDJSON RPC, subtask delegation, tool interception | Rust, Codex/Claude/OpenCode integracija | ✅ Osnova za Hermes-BSD |
+| **Pi Harness** — Samostojan Node.js agent (`@earendil-works/pi-coding-agent`), home overlay sistem | Node.js, npm global, Hermes orkestracija | ✅ Glavna izvršna linija na Clawdie ISO |
+| **Wiki za LLMs** — 44 stranice Colibri wiki s OKF v0.2 frontmatter, automatski lint | Markdown, OKF, wiki-lint, pre-push hooks | ✅ U produkciji |
 
-## Obvezna radna praksa
-- **Tvrtka:** Invest d.o.o., Novo mesto
-- **Opis:** Obavio šestomjesečnu obveznu praksu za smjer Građevinski tehničar. Kao pomoćnik voditelja projekta pomagao sam u izradi tehničke dokumentacije za građevinsku dozvolu za obnovu procesa proizvodnje u tvornici Akripol Trebnje.
+---
 
-## Povijest zaposlenja
-- **Cestno podjetje Novo mesto (Betonarna Livada):** Voditelj laboratorija za nadzor kvalitete betona.
-- **Računalniški servis Insert d.o.o.:** Sastavljač nove računalničke opreme i serviser rabljenih računalnikov.
-- **Logina IT d.o.o.:** Sustavni administrator.
-- **[Microteam](https://www.microteam.si/):** Predavač.
-- **Noviforum d.o.o.:** Tehnička podrška zaposlenima.
-- **T2 d.o.o.:** Ugovorno priključivanje opreme.
-- **SAP Slovenija, Hrvaška in Srbija:** Drugonivojska podrška.
-- **Okoljevarstvena akcija Očistimo Slovenijo v enem dnevu:** Postavitev i administracija poštanskog sustava.
-- **[Društvo Duh časa](https://www.duh-casa.si/):** Suosnivač.
-- **ECDL - Uporaba standardnih možnosti CAD aplikacij:** Položen ispit.
-- **[MPH d.o.o.](https://mph.si/):** Rad u skupini stručnjaka na području sanacije kanalizacije bez iskopa.
-- **H&O Hiše in okna d.o.o.:** Instalater drvenih kuća.
-- **[Roletarstvo Bayer d.o.o.](https://www.roletarstvo-bayer.si/):** Montaža sjenila.
-- **GMC Kovi d.o.o.:** Instalater metalnih polica.
-- **Uroš Petek s.p.:** Montaža hodne ploče na balkonima.
-- **SPL Ljubljana:** Operativni održavatelj višestambenih zgrada.
-- **Mizarstvo Janez Šporar s.p.:** Pomoćnik instalatera namještaja.
+## 🛠 Tehnološki sklad za AI rad
+
+**Sustavi i Orčestracija:** FreeBSD 15, ZFS, bhyve, Bastille, systemd-style services, poudriere
+
+**Agent Frameworks:** Pi Harness, Zot, Herdr, Colibri-daemon, MCP Protocol
+
+**Jezici:** Rust (Colibri core, Herdr, Zot), Go (Colibri services), Node.js/TypeScript (Pi), Python (učenje)
+
+**Local LLM i Infra:** Ollama, llama.cpp (benchmarks), pgvector, Docker, Traefik, N8N
+
+**Terminal-first:** tmux, SSH, zsh, ratatui TUI, Neovim/Windsurf
+
+---
+
+## 📚 Javno znanje i dokumentacija
+
+- **Colibri Wiki** — 44 stranice arhitekture, benchmarks, odlukama ([wiki](/hr/wiki/))
+- **Google OKF v0.2** — Strojno čitljivi metapodaci s trust tiers, stale_after, provenience
+- **Abbreviations Index** — Automatski glosar akronima
+- **Upute** — Deployment (Traefik+Systemd), Docker Desktop Debian 13, Context Engineering, Tutorial Style Guide ([guides](/hr/guides/))
+
+---
+
+## 🔗 Poveznice na projekte
+
+- [Clawdie ISO](/hr/projects/clawdie-iso/) — Glavni projekt: bootable AI agent platforma
+- [Colibri](/hr/projects/colibri/) — Control plane + tokenomics
+- [Herdr](/hr/projects/herdr/) — Terminal agent workspace
+- [Zot](/hr/projects/zot/) — Agent harness
+- [Pi Harness](/hr/projects/pi/) — Node.js agent runtime
+
+> *Puna povijest zaposlenja (IT support, sysadmin, hardware) na zahtjev. Fokus ovdje je na AI agentici — onome što gradim sad.*

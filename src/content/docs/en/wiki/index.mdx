@@ -23,7 +23,7 @@ These rules keep the wiki a maintainable artifact, not a second source of truth:
 
 ## Lint workflow
 
-The [`wiki-lint`](../../scripts/wiki-lint) script checks every page against the current code: dangling references, resurrected old names (from the naming ledger), and orphan pages. It runs as part of `ci-checks.sh --strict` and is gated by the pre-push hook — a drift failure blocks a push, same as a clippy warning.
+The [`wiki-lint`](https://code.smilepowered.org/clawdie/colibri/src/commit/f7f0e44fd24d1d18c68eaf4b4e96860460d4cf4b/scripts/wiki-lint) script checks every page against the current code: dangling references, resurrected old names (from the naming ledger), and orphan pages. It runs as part of `ci-checks.sh --strict` and is gated by the pre-push hook — a drift failure blocks a push, same as a clippy warning.
 
 ## Pages
 
