@@ -1,0 +1,465 @@
+---
+type: Agent Harness Reference
+title: "Hive Member Tracking & Cost-Aware Routing"
+description: "Hive member identity (machine UUID), capability matrix + local LLM probes, cost-aware task routing."
+tags: [hive, routing]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-glasspane/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Hive Member Tracking & Cost-Aware Routing
+
+**Status:** Partially shipped — capability matching + eval-driven model
+selection live (#285); stable node UUID and hive-level cost aggregation pending.
+**Date:** 24.jun.2026
+**Driven by:** T1.5 per-task cost tracking (shipped) → T2.x routing
+
+> **Companion doc:** [hive-pane](./hive-pane.md) — the operator presentation
+> layer this engine feeds. Hive Pane is the "how it looks" (board, A2A discovery);
+> this doc is the "how it works" (identity, probes, routing, scheduling).
+
+## What Exists Today
+
+| Component                                | State                                                                                                                                                    | Gap                                                       |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `mother_schema.sql`                      | `hive_nodes` table with `hw_profile` + `capabilities` JSONB                                                                                              | No stable node UUID; hostname is the key                  |
+| `derive_capabilities()` trigger          | Auto-computes `has_gpu`, `gpu_vendor`, `can_run_local_llm`, `max_model` from hw_profile                                                                  | Only GPU/VRAM heuristics — doesn't probe running services |
+| `clawdie-system-probe`                   | Collects GPU, RAM, CPU, disks, ZFS, WiFi, Vulkan, Colibri status                                                                                         | No ollama/llama.cpp probing                               |
+| `node-register-mcp`                      | UPSERTs hw_profile into `hive_nodes` on join — reachable over the bridge since `node_register` was allowlisted (#325, see [ssh-bridge](./ssh-bridge.md)) | No UUID generation at join time                           |
+| `crates/colibri-daemon/src/scheduler.rs` | Cron/interval/one-shot jobs, capability matching (`pick_agent`), eval-driven `select_model`                                                              | Selection is per-host; no cross-hive awareness yet        |
+| `colibri-ledger`                         | Local SQLite `agents` table with UUID (v4 random)                                                                                                        | UUID is session-local, not hive-stable                    |
+| T1.5 cost tracking                       | Per-task cost captured in local SQLite                                                                                                                   | No hive-level cost aggregation                            |
+
+## Design Goals
+
+1. **Stable identity** — A node that joins, leaves, and rejoins is the same node. Not hostname-based (hostnames change when re-provisioned).
+2. **Capability matrix** — What can each member do? Not just hardware, but running services: ollama, llama.cpp, available models, provider API keys, cost tier.
+3. **Verify, don't guess** — Every capability in the matrix comes from a probe result, not self-declaration. The hw-probe is the single source of truth; the `derive_capabilities()` trigger maps hardware facts → capability booleans.
+4. **Cost-aware routing** — When a task is dispatched, the scheduler considers: urgency, provider cost, local LLM availability, cache-hit potential, and capability match.
+5. **Local LLM tier** — A beefy member can serve as a "free but slow" execution target for non-urgent tasks. The cost model treats local execution as $0.0000/task.
+6. **Extensible** — New backends (ollama, llama.cpp, vLLM, Exo clusters) slot into the same capability matrix without schema changes.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        MOTHER (osa)                             │
+│  ┌─────────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ PostgreSQL       │  │ Scheduler    │  │ MCP Bridge        │  │
+│  │  hive_nodes      │  │  cost-aware  │  │  colibri-mcp-ssh  │  │
+│  │  capabilities    │  │  routing     │  │  node-register    │  │
+│  │  cost_history    │  │  dispatch    │  │  cost-query       │  │
+│  └─────────────────┘  └──────────────┘  └───────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+         ▲                              │
+         │ hw-probe + capabilities      │ task dispatch
+         │ (MCP tools/call)             │ (MCP or direct)
+         │                              ▼
+┌────────────────────┐    ┌────────────────────┐
+│  Node: clawdie-a   │    │  Node: clawdie-b   │
+│  ┌──────────────┐  │    │  ┌──────────────┐  │
+│  │ Colibri      │  │    │  │ Colibri      │  │
+│  │  zot spawner │  │    │  │  zot spawner │  │
+│  │  local SQLite│  │    │  │  ollama      │  │
+│  └──────────────┘  │    │  │  llama.cpp   │  │
+│  GPU: none         │    │  │  models:     │  │
+│  RAM: 8GB          │    │  │   qwen2.5:7b │  │
+│  Cost: cloud-only  │    │  └──────────────┘  │
+│                    │    │  GPU: RTX 4090     │
+│                    │    │  RAM: 64GB         │
+│                    │    │  Cost: $0 local    │
+└────────────────────┘    └────────────────────┘
+```
+
+---
+
+## Identity: Machine UUID
+
+### Problem
+
+Hostname is unstable. A live-USB node gets `clawdie` on every boot. A disk-installed node keeps the hostname the operator set. Mother needs a stable, verifiable identity that survives re-provisioning.
+
+### Solution: `/var/db/machine-id`
+
+A 32-character hex UUID generated once, stored locally, included in every hw-probe report. Like `systemd`'s `/etc/machine-id` but simpler: only one purpose — hive identity.
+
+```
+# Generated once by clawdie-firstboot or operator session
+/var/db/machine-id → a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+**Properties:**
+
+- **Stable across reboots**: stored on disk, not tmpfs
+- **Survives re-provisioning**: if the seed partition preserves `/var/db/machine-id`, the same physical machine keeps the same identity
+- **Not a secret**: it's an ID, not a key
+- **Verifiable**: mother can check "has node a1b2c3d4 ever joined?" — if yes, this is a rejoin, not a new node
+
+**Alternatives considered:**
+
+| Approach                  | Pros                                        | Cons                                                              |
+| ------------------------- | ------------------------------------------- | ----------------------------------------------------------------- |
+| SMBIOS UUID (`hw.uuid`)   | Truly hardware-bound, survives OS reinstall | Not available on all platforms (VPS, ARM); can be spoofed         |
+| SSH host key fingerprint  | Cryptographically strong                    | Changes on OS reinstall; key rotation breaks identity             |
+| Random UUID (this design) | Portable, simple, survives seed restore     | Can be copied/cloned (but same machine, same ID — that's correct) |
+
+**Recommendation:** Generate on first boot, store in `/var/db/machine-id`. The hw-probe includes it as `machine_id`. Mother's `hive_nodes` table gets a `UNIQUE` constraint on `machine_id`.
+
+### Schema change
+
+```sql
+ALTER TABLE hive_nodes ADD COLUMN machine_id TEXT;
+ALTER TABLE hive_nodes ADD CONSTRAINT uq_machine_id UNIQUE (machine_id);
+```
+
+The `node-register-mcp` UPSERT switches from `ON CONFLICT (hostname)` to `ON CONFLICT (machine_id)`. Hostname becomes a mutable attribute (updates on rejoin), machine_id becomes the stable key.
+
+---
+
+## Capability Matrix
+
+### What goes in the matrix
+
+Every capability is a boolean derived from hardware facts, not a self-declaration. The hw-probe collects hardware; the trigger derives capabilities.
+
+| Capability          | Derived from                | Used for                                     |
+| ------------------- | --------------------------- | -------------------------------------------- |
+| `has_gpu`           | GPU detected in pciconf     | GPU-accelerated inference                    |
+| `gpu_vendor`        | amdgpu/nvidia driver        | Model compatibility                          |
+| `vulkan_compute`    | vulkaninfo success          | llama.cpp Vulkan backend                     |
+| `can_run_local_llm` | RAM ≥ 16GB or has GPU       | Eligibility for local task execution         |
+| `max_model`         | RAM heuristic               | Model size limit (3b, 7b-q4, 13b-q4, 34b-q4) |
+| `cpu_only`          | No GPU detected             | Fallback only (slow)                         |
+| `has_wifi`          | wlan devices                | Network capability                           |
+| `has_zfs`           | ZFS pools non-empty         | Storage capability                           |
+| `colibri_running`   | service status              | Agent host eligibility                       |
+| `provider_api_keys` | MCP-reported (not hw probe) | Cloud provider availability                  |
+
+### Local LLM capabilities (NEW)
+
+Extend the hw-probe to detect running local LLM services and extend the trigger to derive capabilities from them:
+
+```json
+{
+  "local_llm": {
+    "ollama_running": true,
+    "ollama_models": ["qwen2.5:7b", "deepseek-r1:8b", "nomic-embed-text"],
+    "llama_cpp_installed": true,
+    "llama_cpp_models": ["/var/db/models/qwen2.5-7b-q4.gguf"],
+    "vulkan_support": true
+  }
+}
+```
+
+**New derived capabilities:**
+
+| Capability            | Derivation                                                                   |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `ollama_available`    | `ollama_running == true`                                                     |
+| `ollama_models`       | Array of model tags (from `ollama list`)                                     |
+| `llama_cpp_available` | Binary at `/usr/local/bin/llama-server` or similar                           |
+| `llama_cpp_models`    | GGUFs in `/var/db/models/` or `/usr/local/share/models/`                     |
+| `can_embed_locally`   | `nomic-embed-text` in ollama OR any embedding model loaded                   |
+| `inference_tier`      | `local-fast` (GPU ≥ 24GB), `local-slow` (CPU-only, RAM ≥ 16GB), `cloud-only` |
+
+### Probe additions to `clawdie-system-probe`
+
+```sh
+# New collectors
+collect_machine_id()   # cat /var/db/machine-id or generate
+collect_ollama_status() # ollama list 2>/dev/null (JSON models)
+collect_llama_cpp()    # which llama-server; ls /var/db/models/*.gguf
+collect_local_llm()    # aggregate JSON block
+```
+
+---
+
+## Cost-Aware Routing
+
+### The routing decision
+
+When a task arrives at the scheduler, it computes a **routing score** for each eligible node:
+
+```
+score = capability_match × urgency_weight × cost_weight × cache_weight
+
+capability_match: 0.0–1.0 (does the node have the required skills/model?)
+cost_weight:       0.0–1.0 (lower cost → higher weight)
+urgency_weight:    0.0–1.0 (time-critical tasks penalize slow nodes)
+cache_weight:      0.0–1.0 (warm cache → higher weight)
+```
+
+### Cost tiers
+
+| Tier          | Provider               | Cost per 1M tokens | Latency | Used when                           |
+| ------------- | ---------------------- | ------------------ | ------- | ----------------------------------- |
+| T0 (free)     | Local ollama/llama.cpp | $0.00              | 5–60s   | Non-urgent, capability match        |
+| T1 (cheap)    | DeepSeek V3            | $0.27 / $1.10      | 2–5s    | Default for most tasks              |
+| T2 (balanced) | Gemini Flash           | $0.15 / $0.60      | 1–3s    | High cache-hit tasks                |
+| T3 (premium)  | Claude Sonnet 4        | $3.00 / $15.00     | 3–8s    | Complex reasoning, only when needed |
+
+### Local LLM routing rules
+
+1. **If task is non-urgent AND a hive member has a matching local model → route locally at $0.00 cost.**
+2. **If the local model is unavailable (node down, model not loaded) → fall back to T1 (DeepSeek).**
+3. **If task is urgent (latency < 5s required) → skip local tier, go straight to T1.**
+4. **Embedding tasks (RAG, similarity search) → always prefer local if available. Embeddings are cheap to compute locally and don't need reasoning.**
+
+### How the scheduler knows
+
+The scheduler queries `hive_nodes` for all online nodes, filters by `capabilities.can_run_local_llm`, checks `ollama_models` for the required model, and computes the routing score. If no local node matches, it falls back to the cloud tier.
+
+The task schema gets a new field:
+
+```sql
+ALTER TABLE tasks ADD COLUMN routing JSONB;
+-- {"preferred_tier": "local", "allowed_tiers": ["local", "cheap"], "max_cost_usd": 0.05, "deadline_s": null}
+```
+
+---
+
+## Protocol: Join → Probe → Route
+
+> **A2A integration:** See [hive-pane](./hive-pane.md#a2a-integration-planned) for the
+> Agent Card, task exchange, and typed cost data parts. The routing engine
+> (this doc) and the A2A protocol (hive-pane) are orthogonal layers — either
+> can evolve independently.
+
+### Phase 1: Join (existing, extended)
+
+```
+Node boots → clawdie-system-probe runs → MCP tools/call node_register
+→ mother UPSERTs hive_nodes → derive_capabilities() trigger fires
+→ capabilities JSONB updated → node is "online"
+```
+
+**New:** `machine_id` is included. If the machine_id already exists, mother updates the existing row (rejoin), preserving history.
+
+### Phase 2: Heartbeat (existing)
+
+`colibri-daemon` sends periodic heartbeat via MCP. Updates `last_seen`. If heartbeat misses for > 5 minutes, node status → `offline`.
+
+### Phase 3: Capability Sync (new)
+
+On heartbeat, the node can optionally push updated capabilities (if ollama was installed, models changed, etc.). The hw-probe is re-run and the new `local_llm` block is sent.
+
+### Phase 4: Task Dispatch (new)
+
+```
+Scheduler picks a queued task
+  → queries hive_nodes for eligible nodes
+  → computes routing score for each
+  → picks winner
+  → dispatches task via MCP or direct agent spawn
+  → writes routing decision to task.routing JSONB
+```
+
+### Phase 5: Cost Capture (existing, extended)
+
+When the task completes, the local daemon writes cost to its SQLite (T1.5). The mother aggregates hive cost via periodic MCP queries or push events.
+
+---
+
+## Three Implementation Options
+
+### Option A — Mother-Centric (Minimal New Code)
+
+**What:** Mother is the brain. Nodes register, mother routes. No peer-to-peer.
+
+**Implementation:**
+
+1. Add `machine_id` to `hive_nodes` + hw-probe (1 day)
+2. Extend `derive_capabilities()` for local LLM (1 day)
+3. Add `routing_score()` function to mother's PostgreSQL (stored function — zero Rust changes)
+4. Extend `node-register-mcp` to accept `local_llm` block (0.5 day)
+5. Add `local_llm` probe to `clawdie-system-probe` (1 day)
+
+**Rust changes:** Scheduler reads `capabilities` from hive_nodes via MCP query, computes score, dispatches. ~200 lines.
+
+**Total:** ~3.5 days.
+
+**Pros:**
+
+- Simple to reason about — one source of truth
+- Lowest implementation risk
+- Scheduler lives on mother (always-on)
+- Existing MCP bridge handles all communication
+
+**Cons:**
+
+- Mother is single point of failure for routing (but not execution — once dispatched, the task runs independently)
+- Latency: scheduler must query mother on every tick
+- Doesn't scale to 100+ nodes (not a real concern for our use case)
+
+---
+
+### Option B — Capability-Advertised with Local Routing Fallback
+
+**What:** Mother stores the matrix, but nodes can also route tasks they own to peers directly. Hybrid: central registry + distributed execution.
+
+**Implementation:**
+
+1. All of Option A (3.5 days)
+2. Add `capabilities` API to `colibri-daemon`'s Unix socket (self-awareness) — 1 day
+3. Add local peer discovery via mDNS or Tailscale whois — 1 day
+4. Add direct peer-to-peer task dispatch via Unix socket → MCP → remote — 2 days
+5. Add fallback logic: "try local first, if no response in 30s, ask mother" — 1 day
+
+**Total:** ~8.5 days.
+
+**Pros:**
+
+- Lower latency for local dispatch
+- Survives mother downtime for peer-to-peer tasks
+- Natural fit for local LLM use case (beefy node is on same LAN)
+- Nodes that discover each other can route without phoning home
+
+**Cons:**
+
+- Complexity: two code paths (central + peer-to-peer)
+- Security: peer-to-peer dispatch needs authentication (who can send tasks to my daemon?)
+- Harder to audit: cost tracking must handle peer-dispatched vs mother-dispatched tasks differently
+- mDNS doesn't work across subnets (Tailscale works but adds dependency)
+
+---
+
+### Option C — Capability-Matrix-as-Skill (Zero-Code Routing)
+
+**What:** Don't build a routing engine at all. The capability matrix is exposed as an MCP tool that agents query. The agent itself decides where to route based on the matrix + its own reasoning. The matrix is advisory, not prescriptive.
+
+**Implementation:**
+
+1. All of Option A minus the routing_scoring function (2.5 days)
+2. Add `colibri_query_hive_capabilities` MCP tool on mother — returns full online node matrix (0.5 day)
+3. Add `colibri_dispatch_to_node` MCP tool — sends task to a specific node (1 day)
+4. Write a `hive-routing` skill that teaches agents how to use the matrix (0.5 day)
+
+**Total:** ~4.5 days. **Zero scheduler changes.**
+
+**Pros:**
+
+- Exploits Colibri's architecture-as-differentiator: the agent IS the intelligence
+- The routing decision is auditable in the conversation log (why did the agent pick this node?)
+- Natural fit for local LLM — the agent can reason "this task is low priority, I'll try the beefy node first"
+- No new scheduler code — just MCP tools + skills
+- The skill can be iterated without recompiling Colibri
+
+**Cons:**
+
+- Each routing decision costs tokens (the agent must reason about it)
+- Agents make inscrutable routing choices (the LLM "just knows")
+- No hard guarantees — an agent might route a $5 task to Claude when DeepSeek would do fine
+- Requires the agent to be "cost-aware" (which requires the MCP cost query tool — already shipping in T1.5)
+
+---
+
+## Recommendation
+
+**Start with Option A (Mother-Centric) as the foundation, then layer Option C (Skill-Based) on top.**
+
+The capability matrix, stable UUIDs, and local LLM probes are the foundation — they're needed regardless of the routing strategy. Option A gives us the data model and probe infrastructure. Once that's solid, adding the MCP tools for agent-driven routing (Option C) is a thin layer on top. Option B (peer-to-peer) adds complexity we don't need at this scale.
+
+**Phase 1 (this sprint):** Machine UUID + local LLM probes + extended capabilities matrix. ~2.5 days.
+**Phase 2 (next sprint):** Mother-based routing + MCP tools for agent-driven routing. ~2 days.
+**Phase 3 (future):** Peer-to-peer fallback if we ever have >20 nodes.
+
+---
+
+## Deliverables by Phase
+
+### Phase 1 — Identity & Capability Foundation
+
+| Deliverable                                                                                      | Where       | Lines     |
+| ------------------------------------------------------------------------------------------------ | ----------- | --------- |
+| `machine_id` generation in `clawdie-firstboot`                                                   | clawdie-iso | ~15       |
+| `collect_machine_id()` in hw-probe                                                               | clawdie-iso | ~10       |
+| `collect_ollama_status()` in hw-probe                                                            | clawdie-iso | ~30       |
+| `collect_llama_cpp()` in hw-probe                                                                | clawdie-iso | ~20       |
+| `collect_local_llm()` aggregator in hw-probe                                                     | clawdie-iso | ~25       |
+| `machine_id` column + constraint in mother_schema.sql                                            | colibri     | ~5        |
+| Extended `derive_capabilities()` for `ollama_available`, `llama_cpp_available`, `inference_tier` | colibri     | ~40       |
+| `node-register-mcp` handling of `machine_id` key + new local_llm fields                          | colibri     | ~15       |
+| This design doc (hive-routing.md)                                                                | This file   | ~0 (done) |
+
+### Phase 2 — Routing Engine
+
+| Deliverable                                                                                                    | Where             |
+| -------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `colibri_query_hive_capabilities` MCP tool                                                                     | colibri-mcp       |
+| `colibri_dispatch_to_node` MCP tool                                                                            | colibri-mcp       |
+| `hive-routing` skill                                                                                           | `.agent/skills/`  |
+| `Task.routing` JSONB field in colibri-ledger                                                                   | colibri-ledger    |
+| Mother-side routing score as PostgreSQL function (optional — only if agent-driven routing proves insufficient) | mother_schema.sql |
+
+---
+
+## Integration with the Trifecta
+
+The hive routing plan completes the trifecta's T2.x vision:
+
+```
+T1.4 Prompt Discipline    ✅ Cache warming, cost mode, 3-region prompt
+T1.5 Per-Task Cost        ✅ Captured locally (this sprint)
+T2.x Cost-Aware Routing   📋 Hive matrix → routing decision
+T2.x Model Selection      📋 Arbitrage between cloud tiers + local LLM
+T2.x Eval Harness         📋 Task success measurement
+```
+
+The key insight: local LLM is the **ultimate cache-hit token**. Every token generated on a beefy node's GPU is $0.0000. The routing engine's job is to maximize the use of $0 tokens without compromising task success rates.
+
+## Fleet SSH reliability
+
+Two one-liner configs that prevent SSH interruptions and ksshaskpass popups
+on fleet nodes:
+
+### 1. Disable password auth — no brute-force surface
+
+When a fleet node connects and the key doesn't match on first attempt, sshd
+falls back to password authentication. Fail2ban counts those as failures and
+bans the source IP after `maxretry` attempts. With password auth off, there
+is nothing to brute-force:
+
+```sh
+# /etc/ssh/sshd_config
+PasswordAuthentication no
+```
+
+Caveat: nodes with password auth disabled need physical/console access if
+they lose their private key.
+
+### 2. Auto-add keys to agent — no ksshaskpass popups
+
+When `ssh-agent` has no identities, Kitty SSH triggers ksshaskpass on
+reconnect. `AddKeysToAgent yes` auto-loads keys on first use:
+
+```
+# ~/.ssh/config
+Host *
+  AddKeysToAgent yes
+```
+
+### 3. FreeBSD: PF rate limiting
+
+On FreeBSD nodes, `max-src-conn-rate 5/60` with `<ssh_brutes>` table
+provides the same protection independently of fail2ban:
+
+```sh
+# /etc/pf.conf
+table <ssh_brutes> persist
+pass in proto tcp to port 22 \
+  max-src-conn-rate 5/60 overload <ssh_brutes> flush global
+```
+
+---
+
+→ [fail2ban-tailscale skill](../../.agent/skills/fail2ban-tailscale/SKILL.md)
+→ [freebsd-admin skill](../../.agent/skills/freebsd-admin/SKILL.md)

@@ -1,0 +1,111 @@
+---
+title: verify-before-execute — verify in the target context, surface failures
+description: "A verification is only valid if it runs where the artifact ships, and reports honestly. The xkbcomp borrowed-tool incident, the known-good chroot pattern, and how it applies to TUI/GUI development."
+okf:
+  source_of_truth: "crates/colibri-daemon/src/spawner.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+← [index](./index.md)
+
+# verify-before-execute
+
+A verification is only worth anything if it runs **where the thing ships**, and
+**reports its result honestly**. Run a check in a borrowed context — the build
+host instead of the image, a stub daemon instead of the real one — and you end
+up testing the _borrowed_ context, not the artifact. It passes or fails for
+reasons that have nothing to do with what you meant to check. Gagging the output
+(`>/dev/null 2>&1`) compounds it: when the borrowed-context check inevitably
+lies, you can't even see why.
+
+This is the same spine as "test premises, not just conclusions" and "read the
+source before asserting behavior." The thing that _decides_ the answer has to
+actually be true, in the place it has to be true.
+
+## The anchor incident — the borrowed xkbcomp (clawdie-iso #275)
+
+Near the end of the image build, the iso build script (_build.sh_ in
+clawdie-iso) sanity-checks that the image's
+keyboard layouts compile. It needs `xkbcomp` — and grabbed the copy just
+installed **inside** the image, but ran it on the **build host's** loader.
+
+Almost no program is self-contained. When `xkbcomp` starts, the OS loader hunts
+for its helper libraries (`libxkbfile.so.1` and friends) — and looks on the
+machine _running_ it, i.e. the build host, not the image. The build host
+(valhala) is headless — no X packages — so the library isn't there. The binary
+died before compiling anything.
+
+It had passed on prior build hosts, because those hosts happened to have
+desktops installed, so `libxkbfile.so.1` was present _by coincidence_. The check
+was accidentally answering "does the host have X libraries," never "is the image
+healthy."
+
+Then the error was **gagged** (`>/dev/null 2>&1`), so the honest message —
+"Shared object libxkbfile.so.1 not found" — got swallowed and replaced with the
+misleading "keymap does not compile." A false negative, dressed as a real one,
+with no clue to the cause.
+
+The fix (#275): run `xkbcomp` **chrooted into the image**, where its own
+libraries live right beside it — the image checks itself, the host needs nothing
+— and capture the output to a log that is printed on failure.
+
+## The known-good pattern (already in the codebase)
+
+The iso build script already had the right pattern — `xkbcomp` was the one
+outlier:
+
+```sh
+run_live_chroot() {
+    chroot "$MOUNT_POINT" /usr/bin/env \
+        PATH="/usr/local/sbin:..." LD_LIBRARY_PATH="/usr/local/lib:..." "$@"
+}
+```
+
+Every other dynamically-linked image binary the build invokes
+(`glib-compile-schemas`, `gdk-pixbuf-query-loaders`, `fc-cache`,
+`update-mime-database`, `gtk-update-icon-cache`) goes through it. `pkg -r /mnt`
+does the equivalent for package queries against the image. **Rule: to verify an
+image-resident binary, execute it inside the image (`chroot`), never borrow it
+to the host.**
+
+## Anti-patterns to recognize
+
+- **Borrowed binary** — `${MOUNT_POINT}/usr/local/bin/foo` run directly: the
+  host loader resolves its libraries against the host, which may not have them.
+- **Gagged output** — `>/dev/null 2>&1` on a verification step: when it lies,
+  the reason is invisible. Verifications must capture and surface their real
+  output, especially on failure.
+- **Assumed environment** — a check that needs a daemon / display / socket but
+  doesn't confirm it is the _real, shipped_ one. A green against a stub is not a
+  green against the product.
+
+## Application to TUI / GUI work
+
+This is the gap we are closing as the TUI/GUI tracks mature — the same class of
+bug simply moves there:
+
+- **colibri-tui** — verify against the real `colibri-daemon` Unix socket and the
+  real state machine, not a stub or the dev host's daemon. Otherwise the test
+  answers "does the stub reply," not "does the TUI work."
+- **glasspane / XFCE session** — verify rendering and interaction against the
+  real display server and the _shipped_ session, not the dev host's (different
+  libraries, themes, compositor, terminfo). A dev-host green does not mean a
+  boots-green.
+- **Any "does the built thing work" check** — run it where the artifact runs.
+  The build host and the dev host are both borrowed contexts; only the target
+  context's green counts.
+
+When a verification exists, ask two questions: _is it running in the
+environment the artifact ships in?_ and _if it fails, will I see the real
+reason?_ If either answer is no, the check is performing confidence, not
+providing it.
+
+## Related
+
+- [quality-gates](./quality-gates.md) — the merge gate (`ci-checks.sh`)
+- [contracts](./contracts.md) — stable schemas + fixture tests
+- Pre-deploy-test-gate plan (`docs/plans/11.jul.26-pre-deploy-test-gate.md`) —
+  the same principle applied to "don't deploy until you've verified the real
+  thing"
+- [daemon-not-demon](./daemon-not-demon.md) — naming-philosophy sibling

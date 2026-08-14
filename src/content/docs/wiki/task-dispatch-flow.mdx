@@ -1,0 +1,108 @@
+---
+type: Task Board Design
+title: "Task dispatch flow (queued → processed → cost)"
+description: "End-to-end task path: queued → claimed → spawn → register → dispatch → cost; why a task stalls."
+tags: [task]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-glasspane/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Task dispatch flow (queued → processed → cost)
+
+← [index](./index.md)
+
+## What this is
+
+The end-to-end path a task takes from submission to a running agent and back.
+This page exists because the chain spans three modules ([task-board](./task-board.md)
+scheduling, [agent-harness](./agent-harness.md) spawning, and the daemon poll
+loop), and it's a recurring source of "why won't the agent pick up my task?"
+confusion. Every stage below is on `main` as of 0.12.0.
+
+## The chain
+
+```
+operator submits        intake-task (socket)            cmd_intake_task
+   → task row (queued) ───────────────────────────────► store.create_task
+                                                              │
+startup prune           delete prior-session agents     prune_stale_agents (#348)
+   → stale cleanup ──────────────────────────────────► before first scheduler tick
+   → reclaim orphaned tasks (#351)                      requeue_agent_tasks (back to queued)
+                                                              │
+scheduler tick (~30s)   reclaim absent-agent tasks        Scheduler::tick — TTL sweep
+   → requeue in-flight ──────────────────────────────► requeue_agent_tasks for absent
+   │  (same tick, after reclaim)                              │
+   → pick best-fit agent                                Scheduler::tick
+   → claim_task ──────────────────────────────────────► pick_agent + presence gate (#349)
+        │                                                     │
+        │ agent present + capable?                            │
+        │   YES → claim_task                                 │
+        │   NO  → re-queue to intake_queue (#352)            │
+        │         (next tick retries)                        │
+        ▼                                                     │
+autospawn (once)        spawn `zot rpc --provider deepseek  autospawn_agent_if_configured
+                        --model deepseek-v4-flash`            │
+   → register agent ───────────────────────────────────► register_agent (name = spawn id)
+                                                              │
+daemon poll loop        task text → agent stdin          poll_tasks
+   → send_prompt ──────────────────────────────────────► rpc_sender().send_prompt(task)
+   → status: Started                                          │
+                                                              ▼
+agent works, emits JSONL → glasspane state → done event → rpc_task_map correlate (#341)
+   → delta billing (usage at done − usage at prompt) → set_task_cost
+   → write_task_eval (self-report) + background local eval → push_cost_to_mother → dashboard
+```
+
+## Stages
+
+| Stage              | What happens                                                                                                                                                                                                                                                  | Code                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Submit**         | A task row is created in the store with status `queued`. The `intake-task` command also pushes a `TaskRequest` onto the scheduler's `intake_queue`.                                                                                                           | [`cmd_intake_task`](../../crates/colibri-daemon/src/socket.rs)                                                     |
+| **Prune**          | On daemon startup (before the first scheduler tick), stale agent rows from prior sessions are deleted, and any tasks they held are **reclaimed** — set back to `queued` with `agent_id` cleared, so the next tick can re-dispatch them.                       | [`prune_stale_agents`](../../crates/colibri-daemon/src/socket.rs) → `requeue_agent_tasks`                          |
+| **Reclaim**        | Each scheduler tick, before dispatch, sweeps agents that are absent (no live handle AND heartbeat older than the 90s TTL). Their in-flight tasks (`claimed`/`started`) are requeued; done/failed tasks are left alone. Local live agents are never reclaimed. | [`Scheduler::tick`](../../crates/colibri-daemon/src/scheduler.rs) → `requeue_agent_tasks`, `is_agent_present`      |
+| **Claim**          | Each tick, the scheduler picks the best-fit agent by capability and presence TTL. If no capable agent is present, the request is **re-queued** — not dropped — for the next tick.                                                                             | [`Scheduler::tick`](../../crates/colibri-daemon/src/scheduler.rs) → `is_agent_present`, `pick_agent`, `claim_task` |
+| **Spawn**          | Autospawn starts the harness as **`zot rpc --provider deepseek --model deepseek-v4-flash`** — bare `rpc` would default to openai-codex (#344 regressor). stdin is piped for RPC.                                                                              | [`autospawn_agent_if_configured`](../../crates/colibri-daemon/src/socket.rs), `AgentKind::Zot.args`                |
+| **Register**       | The spawned agent is registered in the store; its `name` column holds the live spawn-handle id used in `state.agents`.                                                                                                                                        | `register_agent` (store row `name` = spawn id)                                                                     |
+| **Dispatch**       | The poll loop resolves the spawn handle from the claimed task's `agent_id`, gets `rpc_sender()`, and writes the task text to the agent's stdin, transitioning the task to `Started`.                                                                          | [`poll_tasks`](../../crates/colibri-daemon/src/daemon.rs) → `send_prompt`                                          |
+| **Process + cost** | The agent works and emits JSONL ([glasspane](./glasspane.md)). At `done`, the RPC completion path correlates via `rpc_task_map` and bills the **delta** (usage at done − usage at prompt) — not the cumulative total.                                         | `set_task_cost`, `finalize_rpc_task` (#341), `write_task_eval`, `push_cost_to_mother`                              |
+
+## Why a task can stall (and what it is _not_)
+
+The dispatch logic above is all on `main` — a stalled task is almost never
+missing code. The usual causes, in order:
+
+1. **Stale deployed build.** The host is running a colibri binary older than
+   the current dispatch fixes. Check `git rev-parse HEAD` on the host against
+   `origin/main`; reset, rebuild, restart the daemon.
+2. **Agent routing wrong.** If the process is `zot rpc` with no `--provider`
+   flag (#344 regressor), it defaults to openai-codex → 429 rate limits, tasks
+   never complete. Confirm with `ps aux | grep '[z]ot rpc'`.
+3. **Stale agents from prior session.** The store holds agent rows from a
+   previous daemon run, and the scheduler picks one without a live handle.
+   Diagnosis: `colibri list-agents` shows agents with stale timestamps. Fix:
+   `colibri agents prune`, or #348 handles this at startup.
+4. **Scheduler re-queuing, not dropping.** A task that finds no capable agent
+   in one tick is pushed back onto `intake_queue` (#352) — it appears stalled
+   if you expect immediate dispatch, but it will be picked up when an agent
+   becomes available. Check: `colibri get-task <id>` status is `queued`, agent
+   just hasn't matched yet.
+5. **Reclaim recovers in-flight tasks.** If an agent goes offline mid-task
+   (heartbeat stops), the reclaim sweep (#351) sets the task back to `queued`
+   with `agent_id` cleared. The next tick's dispatch can route it to a live
+   agent. This happens both at startup prune and every scheduler tick. A task
+   that was `started` and now shows `queued` is evidence reclaim worked —
+   not a bug.
+
+## See also
+
+- [task-board](./task-board.md) — scheduler internals (capability scoring, intake drain)
+- [agent-harness](./agent-harness.md) — zot/Colibri split, autospawn, AgentKind
+- [glasspane](./glasspane.md) — how agent stdout becomes observable state
+- [cost-dashboard](./cost-dashboard.md) — where cost lands after completion

@@ -1,0 +1,78 @@
+---
+type: Cost Model
+title: "Tokenomics — the three cost levers"
+description: "The three cost levers — timing (valley), caching (prefix), budget (cost modes); the map that links the detail pages."
+tags: [tokenomics]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-deepseek/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Tokenomics — the three cost levers
+
+← [index](./index.md)
+
+## What this is
+
+How Colibri keeps agent-token spend down. Cost isn't one knob — it's a
+**trifecta** of independent levers, each owned by a different part of the
+system. This page is the map; the actual rates and mechanics live in the linked
+pages (and in code), never here, so the numbers can't drift.
+
+The three levers, by the question each answers:
+
+| Lever       | Question                  | Detail                                    |
+| ----------- | ------------------------- | ----------------------------------------- |
+| **Timing**  | _When_ do we run?         | [deepseek-pricing](./deepseek-pricing.md) |
+| **Caching** | _How much_ do we re-send? | [cost-model](./cost-model.md)             |
+| **Budget**  | _How big_ a context?      | [cost-model](./cost-model.md)             |
+
+## 1. Timing — run in the valley
+
+DeepSeek prices tokens by the clock: cheaper in the off-peak **valley** window,
+more at **peak**. Scheduling heavy or batchable work into valley hours cuts the
+per-token price with no change to the work itself.
+
+- Authoritative rates + UTC windows: [deepseek-pricing](./deepseek-pricing.md)
+- The pricing table the runtime computes against: `hermes-bsd:agent/usage_pricing.py`
+
+## 2. Caching — keep the prefix byte-stable
+
+Cache-hit tokens are roughly two orders of magnitude cheaper than fresh ones.
+Colibri holds the system prefix byte-stable across requests so the provider
+serves it from cache instead of re-billing it. For a long-running session this
+is the largest lever.
+
+- Mechanics + cache-hit metering: [cost-model](./cost-model.md)
+- The spawn-time prefix-stability work: [prefix-caching plan](../plans/2026-06-29-prefix-caching.md)
+
+## 3. Budget — size the context to the task
+
+Three cost modes — **fast / smart / max** — cap how much context a turn may
+spend, and the runtime **auto-escalates** only when a cheaper mode can't keep
+up. You pay for the headroom the task needs, not a flat maximum.
+
+- The modes + escalation: [cost-model](./cost-model.md)
+
+## How they compose
+
+The levers are independent and multiply:
+
+- **Timing** lowers the _price per token_.
+- **Caching** lowers the _count of billed tokens_.
+- **Budget** lowers the _tokens a turn is allowed to draw_.
+
+A valley-scheduled, cache-warm, fast-mode turn pays the floor on all three at
+once — none of them trades off against the others.
+
+## See also
+
+- [cost-dashboard](./cost-dashboard.md) — where the spend actually surfaces
+- [deepseek-pricing](./deepseek-pricing.md) — lever 1 detail
+- [cost-model](./cost-model.md) — levers 2 and 3 detail

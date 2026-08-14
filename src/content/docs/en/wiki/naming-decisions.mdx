@@ -1,0 +1,77 @@
+---
+type: Reference
+title: "Naming decisions ledger"
+description: "Colibri wiki page: Naming decisions ledger"
+tags: [naming]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "docs/wiki/index.md"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Naming decisions ledger
+
+← [index](./index.md)
+
+A living record of renames driven by superseded assumptions, so future drift is
+checkable against one list. "Shipped" means merged to `main`; verify against the
+linked code before trusting a row.
+
+## Naming principle — harness-agnostic by default
+
+Name a thing by what it **is**, not by the harness that happens to be the
+current default:
+
+- **Neutral concept** (any harness has one — a session id, an event type,
+  autospawn, "the agent") → a **neutral name**. The harness is a _configurable
+  value_ (e.g. `COLIBRI_AUTOSPAWN_BINARY=zot`), never baked into the name and
+  always operator-overridable.
+- **Harness-specific thing** (one harness's actual wire format) → the harness
+  name belongs in it, and the parallels stay symmetric (`zot_event_type` ↔
+  `pi_event_type`, `AgentRuntime::{Zot, Pi}`) so neither is privileged.
+
+The `pi_*` rows in [Shipped](#shipped) are the cautionary tale: neutral concepts
+wrongly named after a harness. Same applies to docs — a per-harness reference is
+neutral (`AGENT-EVENTS-REFERENCE`), not `ZOT-…`, unless it is truly about one
+harness only.
+
+## Shipped
+
+| Old → New                                        | Why                                                                               | Anchor                                         |
+| ------------------------------------------------ | --------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `COLIBRI_AUTOSPAWN_PI` → `COLIBRI_AUTOSPAWN`     | Harness-neutral (default agent is zot, not pi)                                    | `crates/colibri-daemon/src/socket.rs`          |
+| `COLIBRI_PI_BINARY` → `COLIBRI_AUTOSPAWN_BINARY` | same                                                                              | `socket.rs` (`autospawn_agent_if_configured`)  |
+| `pi_session_id` → `session_id`                   | zot agents have session ids too; `#[serde(alias)]` keeps back-compat              | `crates/colibri-glasspane/src/lib.rs` (`Pane`) |
+| `sample-pi-agent.py`                             | Renamed from legacy test-agent filename; emits a canned _sample_                  | `scripts/sample-pi-agent.py`                   |
+| non-local spawn default `hermes-agent` → `zot`   | `hermes-agent` was a nonexistent leftover binary                                  | `socket.rs` (`default_agent_args`)             |
+| `usb_nodes` → `hive_nodes`                       | a node is any host that joined the hive, not only a USB boot (`+node_type`); #161 | `packaging/mother/mother_schema.sql`           |
+| `pi_type` → `event_type`                         | internal name for the normalized event type; harness-neutral (not serialized)     | `crates/colibri-glasspane/src/lib.rs`          |
+
+## In-flight
+
+_None currently._
+
+## Known residue (not yet actioned)
+
+| Item                                 | Note                                                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `ADR-agent-harness-consolidation.md` | Referenced but does not exist; `AGENTS.md` is the real anchor. See [agent-harness](./agent-harness.md). |
+
+## Structural decisions
+
+| Decision                                                                 | Why / lesson                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Anchor                                                                               |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Single home for mother infra = colibri                                   | The mother MCP scripts were copied into both colibri and clawdie-iso; the iso copy drifted to an **SQL-injectable** `node-register-mcp` on `main`. Same script in two repos drifts — a lint pass should flag cross-repo duplicates.                                                                                                                                                                                                                                                                                                                                             | colibri `packaging/mother/`; iso removal in iso PR #129                              |
+| `FEATURE_COLIBRI` is internal, not user-facing                           | colibri is staged by default; `FEATURE_COLIBRI=NO` is a build-time escape hatch (e.g. no colibri checkout). README clarified.                                                                                                                                                                                                                                                                                                                                                                                                                                                   | clawdie-iso #130                                                                     |
+| `clawdie-gui` is the stable operator command                             | `clawdie-startx` retained as a back-compat alias (both installed); docs teach `clawdie-gui`. Verified intentional, not drift.                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `clawdie-iso/README.md` §clawdie-gui; `clawdie-iso/build.sh`                         |
+| clawdie-iso ZFS pool names: `clawdielive` (live) → `clawdie` (installed) | The live pool must not be `clawdie` (`clawdie-iso/firstboot/shell-zfs.sh`'s `zpool list clawdie` self-misdetects the install USB as an existing install) nor `zroot` (FreeBSD default → collides with a stock install on the target). Distinct from the `crates/clawdie` host-installer's own `zroot/clawdie` layout — two different pool-naming models, do not conflate. **Not** a `## Shipped` rename: `zroot` is a legitimate FreeBSD term the installer uses, so banning it would false-positive the lint. Plan doc updated via clawdie-iso #225 — the two repos now agree. | `clawdie-iso/docs/plans/05.jul.26-zfs-clone-install.md`; `crates/clawdie/src/zfs.rs` |
+
+## See also
+
+- [agent-harness](./agent-harness.md)
+- [quality-gates](./quality-gates.md) — the gate that should catch these at PR time

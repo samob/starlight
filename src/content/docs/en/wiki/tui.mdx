@@ -1,0 +1,188 @@
+---
+type: Architecture Decision
+title: "Terminal dashboard (colibri-tui)"
+description: "Colibri wiki page: Terminal dashboard (colibri-tui)"
+tags: []
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-glasspane-tui/src/main.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Terminal dashboard (colibri-tui)
+
+← [index](./index.md)
+
+The TUI is Colibri's live terminal dashboard. It connects to the daemon's Unix
+socket, pulls the `GlasspaneSnapshot`, and renders a color-coded table of
+supervised panes. It is a **display client**, not part of the daemon, and not
+the same thing as `colibri-glasspane`.
+
+## Why it is not `colibri-glasspane`
+
+`colibri-glasspane` is the **state machine** that decides what state an agent
+is in from its JSONL events. `colibri-tui` is the **screen** that asks the
+daemon "what does the radar look like right now?" and draws it.
+
+| Artifact            | Role                                                     | Resident crate                                          |
+| ------------------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| `colibri-glasspane` | Pane state machine, event ingestor, snapshot builder     | `crates/colibri-glasspane`                              |
+| `colibri-tui`       | Terminal dashboard client with rows, colors, keybindings | `crates/colibri-glasspane-tui` (binary = `colibri-tui`) |
+
+The split matters because the daemon, the MCP bridge, the CLI, and tests all
+use `colibri-glasspane`. The TUI is just one consumer. If the TUI is not
+installed, or crashes, agents keep running.
+
+## Decisions
+
+### Keep the daemon separate from any terminal UI
+
+`colibri-tui` is a standalone process. It resolves the daemon socket the same
+way the CLI does (`DaemonConfig::from_env().socket_path`), then calls
+`client.glasspane_snapshot()` every two seconds. The daemon has no awareness of
+crossterm or ratatui.
+
+This is the same "service owns state, clients render it" pattern as the MCP
+bridge and the CLI. It keeps Colibri headless-safe, which is required for an
+`rc.d` service that must boot before any operator logs in.
+
+→ `crates/colibri-glasspane-tui/src/main.rs` (socket resolution, refresh loop)
+
+### TUI gets spawn/stop keys, not just read-only status
+
+You can spawn a local test agent (`s`) and stop the selected pane (`x`) from
+the dashboard. That overlaps with commands the `colibri` CLI can already do,
+but the experience is different: a CLI command is one-shot; the TUI is a live
+supervision surface with a selected row and an immediate status bar.
+
+We kept the action keys because the dashboard's job is to let an operator
+notice and react — spot a stalled pane and stop it without leaving the
+terminal.
+
+→ `crates/colibri-glasspane-tui/src/main.rs` (`spawn_agent`, `kill_selected`)
+
+### One taxonomy from one snapshot
+
+The TUI does not parse agent stdout. It only reads the already-folded
+`GlasspaneSnapshot`, so Pi, zot, and local test agents are rendered with the
+same columns, colors, and state icons. The rendering code concerns itself only
+with layout and keybindings; all semantic decisions live in
+`colibri-glasspane`.
+
+→ `crates/colibri-glasspane/src/lib.rs` (`AgentState`, `GlasspaneSnapshot`)
+
+### Naming: the binary is `colibri-tui`, the crate is `colibri-glasspane-tui`
+
+The crate directory is `colibri-glasspane-tui` because the package implements
+"a TUI for the glasspane." The installed binary is named `colibri-tui`
+because that is what an operator types. `CLAWDIE-STUDIO.md` and other
+docs refer to `colibri-tui` as shorthand; there is no separate `colibri-tui`
+crate.
+
+This duality is currently accepted. If we ever add a second TUI surface (e.g.
+a `colibri-tui-web` or `colibri-tui-gui`), the naming becomes confusing and
+should be revisited.
+
+## Current keybindings
+
+| Key                    | Action                                          |
+| ---------------------- | ----------------------------------------------- |
+| `q` / `Esc`            | Quit, or close detail pane if open              |
+| `r`                    | Refresh snapshot now                            |
+| `s`                    | Spawn a local `colibri-test-agent`              |
+| `x`                    | Stop the selected pane                          |
+| `Enter`                | Open/close the detail pane for the selected row |
+| `Tab` / `Shift+Tab`    | Cycle through distinct sessions (incl. "All")   |
+| `j` / `k` or `↓` / `↑` | Navigate the pane table                         |
+| `n` / `N`              | Jump to next / previous **attention** pane      |
+| `a`                    | Toggle the attention filter (only attention)    |
+
+## The attention model
+
+The dashboard's primary question is _"does any pane need me right now?"_
+Attention is the impossible-to-miss signal for that.
+
+→ `crates/colibri-glasspane-tui/src/main.rs` (`needs_attention`)
+
+### What counts as "attention"
+
+```rust
+fn needs_attention(pane: &Pane) -> bool {
+    pane.state == AgentState::Error
+        || pane.state == AgentState::Blocked
+        || pane.stalled
+}
+```
+
+**Error + Blocked + Stalled.** Blocked is included because the glasspane state
+machine explicitly marks Blocked = "operator attention needed" (it is the state
+for `queue_update` / pending steering / approval). This single free function is
+shared by the attention bar, the jump keys (`n`/`N`), and the filter (`a`) —
+one definition to change.
+
+### Stall threshold stays at 4h
+
+`DEFAULT_STALL_AFTER = 4 * 60 * 60` (4 hours). Stalled is a rare but critical
+signal, not a frequent one. The attention bar mostly shows Errors and Blocked
+panes; Stalled is the "something is deeply wrong" escalation.
+
+### Attention bar replaces the header when active
+
+When any pane `needs_attention()`, the header slot is replaced by a red-bordered
+attention bar (same 3-line vertical footprint); otherwise the normal header
+renders. This makes attention impossible to miss without consuming extra space.
+
+```
+╔═ ⚠ ATTENTION ══════════════════════════════════════════╗
+║ 3 panes need attention (1 error · 1 blocked · 1 stalled) ║
+║ scraper-19: Error · worker-7: Blocked · db-3: Stalled    ║
+╚═════════════════════════════════════════════════════════╝
+```
+
+- The counter line derives from `snapshot.count()` + `stalled_count()` — no
+  extra API calls.
+- The pane-list line shows pane IDs + state label, truncated to terminal width;
+  if more fit than room allows, it ends with `· (N more — press a)`.
+- The bar stays visible even when the attention filter (`a`) is active, so the
+  operator always sees the total count at a glance.
+
+### Row highlight inverts on selection
+
+| Row state | Normal                      | Selected                               |
+| --------- | --------------------------- | -------------------------------------- |
+| Attention | `bg(DarkRed)` + `fg(White)` | `bg(DarkGray)` + `fg(LightRed)` + bold |
+| Normal    | (plain)                     | `bg(DarkGray)`                         |
+
+Attention rows are impossible to miss; the inversion on selection confirms
+which one the cursor is on without losing the attention signal.
+
+### Attention filter composes with session filter (AND)
+
+`attention_only` is a separate field from `session_filter`. In `filtered_panes()`
+the two chain: session filter **AND** attention filter. `Tab` cycles sessions
+within the attention-only view; turning off the attention filter returns to the
+session-scoped view.
+
+## When to use the TUI vs the CLI
+
+Use the TUI when:
+
+- You want a live, auto-refreshing view of all panes.
+- You are picking a pane to inspect or stop visually.
+- You are on an SSH session with only a terminal.
+
+Use the `colibri` CLI when:
+
+- You are scripting or piping output (`colibri snapshot | jq`).
+- You need a command not bound to a key (e.g. `claim-task`, `set-cost-mode`).
+- You want a one-shot answer without entering an alternate screen.
+
+## See also
+
+- [glasspane](./glasspane.md) — the pane state machine the TUI renders
+- [operator-cli](./operator-cli.md) — the `colibri` CLI that shares the same socket client

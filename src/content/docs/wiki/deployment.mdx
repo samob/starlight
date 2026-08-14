@@ -1,0 +1,191 @@
+---
+type: Operational Procedure
+title: "Deployment"
+description: "Colibri wiki page: Deployment"
+tags: [deploy]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "docs/ISO-SERVICE-LAYOUT.md"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Deployment
+
+← [index](./index.md)
+
+The `clawdie` crate is Colibri's host installer. It discovers a machine's ZFS
+layout and provisions the `clawdie` service. On FreeBSD this means an rc.d
+service, ZFS datasets, and an unprivileged user. On Linux it can use systemd
+and either ZFS or plain directories.
+
+→ `crates/clawdie/src/main.rs`
+
+→ `crates/clawdie/src/plan.rs`
+
+→ `docs/ISO-SERVICE-LAYOUT.md`
+
+→ `docs/CLAWDIE-INSTALLER-VALIDATION.md`
+
+## Decisions
+
+### ZFS is required on FreeBSD, preferred on Linux
+
+FreeBSD does not support a plain-directory layout. If ZFS userland is missing,
+the plan errors immediately. Linux can fall back to plain directories if no
+pool is named and ZFS is unavailable, and it can create a fresh pool on a spare
+disk when asked.
+
+This matches the production target: bare-metal FreeBSD on a ZFS RAID1 mirror.
+Linux support makes development and CI possible without a ZFS host.
+
+### Storage is resolved, not configured
+
+`clawdie plan` resolves storage in this order:
+
+1. If `--pool NAME --create-pool DEVICE` is given, create that pool.
+2. If `--pool NAME` is given, use that existing pool.
+3. If no pool is given and exactly one pool exists, use it.
+4. If multiple pools exist and none is named, error.
+5. On Linux with no ZFS, fall back to plain directories.
+
+This removes the need for a hand-written topology file on typical single-pool
+hosts, while still allowing explicit control when needed.
+
+→ `crates/clawdie/src/main.rs` (`pick_pool`, `validate_storage`)
+
+### Datasets separate state from logs
+
+When ZFS is used, the installer creates:
+
+- `<pool>/clawdie` as a container dataset with `canmount=off`
+- `<pool>/clawdie/db` mounted at `/var/db/clawdie`
+- `<pool>/clawdie/log` mounted at `/var/log/clawdie`
+
+Keeping database and logs in separate datasets lets snapshots, quotas, and
+log-rotation policies apply independently.
+
+→ `crates/clawdie/src/plan.rs` (`zfs_dataset_steps`)
+
+### Dry-run by default
+
+`clawdie apply` prints the plan and exits unless `--yes` is given. `discover`
+and `plan` are read-only. This protects production hosts from accidental
+provisioning.
+
+→ `crates/clawdie/src/main.rs` (`Cmd::Apply`)
+
+### Pool creation is guarded against busy disks
+
+`--create-pool` on a non-empty disk is refused unless `--force` is also given.
+The installer uses `lsblk` on Linux to detect partitions, filesystems, mount
+points, and the root disk. The guard is conservative: if a disk is ambiguous,
+it must be explicitly forced.
+
+→ `crates/clawdie/src/disk.rs`
+
+→ `crates/clawdie/src/main.rs` (`validate_create_device`)
+
+### Single unprivileged service user
+
+The service runs as `_clawdie` on both platforms. On FreeBSD the user is created
+with `pw useradd -s /usr/sbin/nologin -d /var/db/clawdie` and exit code `65`
+(already exists) is treated as a skip. On Linux `useradd --system` is used. The
+state directories are then chowned to that user.
+
+→ `crates/clawdie/src/platform.rs`
+
+### Platform-specific service managers, same spec
+
+`Platform` is an internal trait. The two implementations differ only in how
+they install and enable the unit:
+
+- FreeBSD: writes `/usr/local/etc/rc.d/clawdie`, uses `sysrc clawdie_enable=YES`.
+- Linux: writes `/etc/systemd/system/clawdie.service`, runs `systemctl enable --now
+clawdie`.
+
+Both use the same `ServiceSpec` (binary, user, data dir, service name).
+Running `apply` across platforms therefore produces the same filesystem layout
+and differs only in the service-manager wrapper.
+
+→ `crates/clawdie/src/platform.rs` (`FreeBsd`, `Linux`)
+
+### Daemon runs through the platform supervisor
+
+The generated FreeBSD rc.d script execs `/usr/local/bin/colibri-daemon` through
+`/usr/sbin/daemon -u _clawdie` so the supervisor restarts on crash and the
+process drops to the unprivileged user. The systemd unit is a simple service
+with `Restart=on-failure`.
+
+The installer itself does not start the daemon or stage the binary; it only
+creates the environment. The operator or package build stages
+`colibri-daemon` and then `service clawdie start`.
+
+→ `docs/ISO-SERVICE-LAYOUT.md` (rc.d through daemon(8))
+
+### Secrets are not written by the installer
+
+The installer does not touch provider API keys. A separate file — conventionally
+`/usr/local/etc/colibri/provider environment file — holds secrets and is sourced by rc.d
+before the daemon starts. This keeps the installer's blast radius limited to
+ZFS, directories, users, and service files.
+
+→ [vault-provision](./vault-provision.md)
+
+### Steps are executed sequentially and stop on failure
+
+`deploy::apply` runs each `Step` in order. `Run` steps shell out and fail on a
+non-zero exit unless the step declares allowed exit codes. `WriteFile` steps
+create parent directories, write the file, and chmod it. If any step fails,
+apply stops immediately and reports the failing command and stderr.
+
+→ `crates/clawdie/src/deploy.rs`
+
+## Plan shape
+
+```text
+clawdie plan
+  ├── ZFS layout (or plain dirs)
+  │   ├── create <pool>/clawdie container
+  │   ├── create <pool>/clawdie/db -> /var/db/clawdie
+  │   └── create <pool>/clawdie/log -> /var/log/clawdie
+  └── service install
+      ├── create user _clawdie
+      ├── chown state dirs
+      ├── write service unit (rc.d / systemd)
+      ├── enable service (sysrc / systemctl)
+      └── [systemd] daemon-reload + start
+```
+
+## Typical FreeBSD install
+
+```sh
+# discover
+clawdie discover
+
+# preview
+clawdie plan
+
+# provision datasets, user, and rc.d service
+doas clawdie apply --yes
+
+# start once the colibri-daemon binary is staged
+doas service clawdie start
+```
+
+## Cross-link to runtime paths
+
+After deployment, the service owns these paths:
+
+- `/var/db/clawdie/colibri.sqlite` — SQLite coordination store
+- `/var/run/clawdie/clawdie.sock` — daemon Unix socket
+- `/var/log/clawdie/daemon.log` — stdout/stderr log
+- `/usr/local/etc/colibri/` — configuration and provider secrets
+
+→ [store-schema](./store-schema.md)
+
+→ [operator-cli](./operator-cli.md)

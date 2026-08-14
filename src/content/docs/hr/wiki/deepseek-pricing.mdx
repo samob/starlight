@@ -1,0 +1,98 @@
+---
+type: Cost Model
+title: "DeepSeek pricing"
+description: "DeepSeek V4 per-token pricing — regular + peak-valley rates, UTC + Ljubljana timezone windows."
+tags: [pricing, deepseek]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-deepseek/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# DeepSeek pricing
+
+← [index](./index.md) | → [cost-model](./cost-model.md)
+
+## What this is
+
+A reference table for DeepSeek API per-token pricing as of the V4 official
+release (mid-July 2026). DeepSeek introduced a **peak-valley** pricing
+mechanism: regular rates apply most of the day, peak rates (2×) apply during
+two UTC windows. This page is the single source of truth for cost prediction
+when routing tasks to DeepSeek models.
+
+## Pricing table
+
+All prices in USD per 1M tokens.
+
+### deepseek-v4-pro
+
+| Item                      | Regular   | Peak     |
+| ------------------------- | --------- | -------- |
+| Input tokens (cache hit)  | $0.003625 | $0.00725 |
+| Input tokens (cache miss) | $0.435    | $0.87    |
+| Output tokens             | $0.87     | $1.74    |
+
+### deepseek-v4-flash
+
+| Item                      | Regular | Peak    |
+| ------------------------- | ------- | ------- |
+| Input tokens (cache hit)  | $0.0028 | $0.0056 |
+| Input tokens (cache miss) | $0.14   | $0.28   |
+| Output tokens             | $0.28   | $0.56   |
+
+## Peak hours
+
+| Window | UTC         | Ljubljana (CEST, UTC+2) | Ljubljana (CET, UTC+1) |
+| ------ | ----------- | ----------------------- | ---------------------- |
+| 1      | 01:00–04:00 | 03:00–06:00             | 02:00–05:00            |
+| 2      | 06:00–10:00 | 08:00–12:00             | 07:00–11:00            |
+
+Peak rates are 2× the regular rate for all token types.
+
+## Confirmation
+
+DeepSeek notified (1 Jul 2026): peak-valley pricing takes effect mid-July 2026.
+Window 2 (08:00–12:00 CEST) overlaps with the operator's morning work window —
+PR reviews, autospawned agent tasks, and cron jobs dispatched in that slot will
+cost 2×. No immediate code changes; revisit after MCP arc closes.
+
+### TODO (post MCP arc)
+
+- [ ] Add `DEEPSEEK_PEAK_MULTIPLIER` flag to Colibri cost tracking so dashboard
+      doesn't silently under-report AM spend
+- [ ] Audit cron jobs — reschedule any running 08:00–12:00 CEST to valley hours
+- [ ] Consider time-aware model routing (flash in peak, pro in valley) per
+      [tokenomics](./tokenomics.md) trifecta strategy
+
+## Where this lives in code
+
+- **Hermes-BSD:** `hermes-bsd:agent/usage_pricing.py` — `_OFFICIAL_DOCS_PRICING` table
+  with entries for `deepseek-v4-pro` and `deepseek-v4-flash`. Peak rates stored
+  in `PricingEntry.peak_*_cost_per_million` fields. `is_deepseek_peak_hour()`
+  determines whether current time falls in a peak window.
+  → [`hermes-bsd:agent/usage_pricing.py`](../../hermes-bsd/agent/usage_pricing.py)
+- **Colibri:** The `colibri-deepseek` probe measures actual cache-hit splits
+  from API response headers. Cost tracking in `crates/colibri-daemon/src/cost.rs`
+  uses budget modes (Fast/Smart/Max) rather than per-token dollar rates — the
+  dollar cost flows from the agent runtime (zot) usage events.
+  → [`crates/colibri-deepseek/src/lib.rs`](../../crates/colibri-deepseek/src/lib.rs),
+  [`crates/colibri-daemon/src/cost.rs`](../../crates/colibri-daemon/src/cost.rs)
+
+## Cache-hit economics
+
+DeepSeek's cache-hit discount is ~120× for V4 Pro ($0.003625 vs $0.435) and
+~50× for V4 Flash ($0.0028 vs $0.14). This is why Colibri's cost model invests
+heavily in byte-stable prompt prefixes — a single cache-hit turn can be two
+orders of magnitude cheaper than a cache-miss turn.
+
+## See also
+
+- [cost-model](./cost-model.md) — byte-stable prefixes and cache-hit metering
+- [cost-dashboard](./cost-dashboard.md) — mother-side cost observability
+- [hive-routing](./hive-routing.md) — cost-aware task routing across nodes

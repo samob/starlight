@@ -1,0 +1,306 @@
+---
+type: Reference
+title: "llama.cpp — local LLM inference"
+description: "Colibri wiki page: llama.cpp — local LLM inference"
+tags: [llama]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-deepseek/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# llama.cpp — local LLM inference
+
+← [index](./index.md) | → [bare-metal-freebsd](./bare-metal-freebsd.md)
+
+llama.cpp is a C/C++ inference engine for running LLMs on CPU or GPU. It uses
+the GGUF quantized format — models are compressed but run with near-full
+quality at a fraction of the memory cost. For Clawdie, it's the path to
+**local, offline, zero-cost-per-token inference** on hive nodes that have RAM
+to spare.
+
+## Why it matters
+
+Every token through a cloud API costs money and adds latency. A hive node with
+32+ GB of RAM can run a capable model locally — the 32B DeepSeek R1 distill at
+Q4_K_M fits in ~20 GB and gives strong reasoning quality with zero API cost
+beyond electricity. This isn't a replacement for cloud models (V4 Pro / R1 full
+still need the API), but it offloads the long tail of lightweight agent work:
+summarization, classification, small code reviews, plan validation.
+
+## When to use local vs cloud
+
+| Use case            | Local (llama.cpp)             | Cloud API                      |
+| ------------------- | ----------------------------- | ------------------------------ |
+| Agent chat          | 32B distill (Q4/Q5)           | DeepSeek V4 Pro                |
+| Summarization       | 14B Q6 or 32B Q4              | — (overkill for cloud)         |
+| Code review (small) | 32B Q5                        | V4 Pro for large diffs         |
+| Plan validation     | 32B Q4                        | V4 Pro for architecture review |
+| Classification      | 8B/9B Q8                      | — (overkill)                   |
+| Embedding           | BGE-small (via `llama-embed`) | — (local is the default)       |
+
+Cloud is for "I need the best answer." Local is for "I need a good answer, and
+I need it 100 times today without thinking about cost."
+
+## Install
+
+FreeBSD 15 (pkg):
+
+```sh
+
+```
+
+pkg update && pkg install -y llama-cpp
+
+````
+
+That pulls 29 packages including `ggml`, `curl`, `python311`, and GPU
+libraries. The `llama-cpp` package provides `llama-server`, `llama-cli`,
+`llama-embed`, and the full `llama.cpp` toolchain.
+
+### Pitfall: "Illegal instruction" on older CPUs
+
+The FreeBSD pkg binary may be compiled with instructions your CPU doesn't
+have. Symptoms and CPU feature requirements:
+
+| CPU generation     | Example               | Has             | Missing            | Fix                                      |
+| ------------------ | --------------------- | --------------- | ------------------ | ---------------------------------------- |
+| Sandy Bridge (v1)  | Xeon E5-2620          | SSE4.2, AVX1    | AVX2, FMA, BMI2, F16C | All five flags below                 |
+| Ivy Bridge (v2)    | Xeon E5-2600 v2       | SSE4.2, AVX1, F16C | AVX2, FMA, BMI2   | `-DGGML_AVX2=OFF -DGGML_FMA=OFF -DGGML_BMI2=OFF` |
+| Haswell+ (v3+)     | Xeon E5-2600 v3       | all             | —                  | pkg binary works                        |
+
+Check your CPU:
+
+```sh
+grep Features /var/run/dmesg.boot
+```
+
+If `AVX2`, `FMA`, or `BMI` are missing from the output, build from source
+with the corresponding flags disabled.
+
+### Install from source (portable binary)
+
+When the pkg binary crashes on older hardware (common on Sandy Bridge / Ivy
+Bridge Xeons), or when you need the latest upstream:
+
+```sh
+# Build dependencies (root)
+su
+pkg update && pkg install -y cmake gmake git
+exit
+
+# Clone and build (any user)
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+cmake -B build \
+  -DGGML_NATIVE=OFF \
+  -DGGML_AVX2=OFF \
+  -DGGML_FMA=OFF \
+  -DGGML_F16C=OFF \
+  -DGGML_BMI2=OFF
+cmake --build build -j$(sysctl -n hw.ncpu)
+```
+
+These five flags produce a binary that runs on Sandy Bridge and newer. The
+resulting `./build/bin/llama-server` replaces the pkg binary — use it with
+the same `-hf` flags.
+
+Post-install message from the package:
+
+```
+You installed LLaMA-cpp: Facebook's LLaMA model runner.
+
+In order to experience LLaMA-cpp please download some
+AI model in the GGUF format, for example from huggingface.com,
+run the script below, and open localhost:9011 in your browser
+to communicate with this AI model.
+
+$ llama-server -m $MODEL \
+  --host 0.0.0.0 \
+  --port 9011 \
+  -ngl 15
+```
+
+## Memory reality check (FreeBSD + ZFS)
+
+On a fresh Clawdie live USB, `hw.physmem` (usable memory) can be much lower
+than `hw.realmem` (installed RAM). Example from the HP ML350p Gen8 (36 GB
+installed):
+
+```
+real memory  = 38654705664 (36864 MB)      # installed
+avail memory = 12452335616 (11875 MB)      # usable after BIOS MMIO hole
+```
+
+The gap (~24 GB) is the legacy BIOS memory hole — PCI MMIO space carved out
+below 4 GB and above. This is specific to legacy BIOS boot; UEFI boot on the
+same hardware would expose more usable RAM.
+
+**Rule of thumb:** check `sysctl -n hw.physmem` before picking a model quant,
+not the DIMM count. FreeBSD's ZFS ARC typically stays small on a freshly
+booted live image, but on an installed system with heavy disk I/O it can grow
+to consume most free RAM — tune `vfs.zfs.arc_max` if needed.
+
+## Model selection
+
+### DeepSeek family (recommended for Clawdie)
+
+| Model                        | Params | RAM needed (Q5) | Tok/s on AVX1-only CPU | Best use                    |
+| ---------------------------- | ------ | --------------- | ---------------------- | --------------------------- |
+| R1 Distill Qwen 32B          | 32B    | 23 GB           | — (won't fit 12 GB)    | requires 24+ GB node        |
+| R1 Distill Qwen 14B          | 14B    | 10.5 GB         | ~1 tok/s (measured)    | async code review, embeddings |
+| R1-0528-Qwen3 8B             | 8B     | 5.7 GB          | ~1.8 tok/s (measured)  | batch classification only      |
+| Qwen3.5-9B DeepSeek V4 Flash | 9B     | 6.5 GB          | ~3-4 tok/s (est.)      | interactive, closest to V4  |
+| R1 Distill Llama 8B          | 8B     | 5.7 GB          | ~3-5 tok/s (est.)      | interactive, Llama-based    |
+
+Measured on Xeon E5-2620 (Sandy Bridge, AVX1-only, 12 threads). On newer CPUs
+with AVX2+FMA, expect 2-3× throughput. 14B at ~1 tok/s means a 200-token R1
+reasoning trace = 3+ min wall clock — usable for batch queues, not interactive
+chat. Route interactive work to 7-9B models or the cloud.
+
+Full DeepSeek V4 (Flash 87 GB, Pro 465 GB), V3 (180 GB), and R1 (685 GB) are
+MoE behemoths — no single hive node runs these locally. They stay in the cloud.
+
+### Quant guide
+
+| Quant     | Quality       | Size multiplier | When                                        |
+| --------- | ------------- | --------------- | ------------------------------------------- |
+| Q8_0      | near-lossless | 1.0× params     | plenty of RAM, best quality                 |
+| Q6_K      | excellent     | 0.85× params    | code + technical work                       |
+| Q5_K_M    | very good     | 0.72× params    | general chat, good balance                  |
+| Q4_K_M    | good          | 0.62× params    | tight RAM, still solid                      |
+| Q3_K_M    | acceptable    | 0.50× params    | last resort for big models                  |
+| IQ quants | varies        | 0.45–0.65×      | imatrix-calibrated, sometimes better than Q |
+
+Prefer Hugging Face's `?local-app=llama.cpp` page for exact quant
+recommendations — the quant labels (e.g. `UD-Q4_K_M`) are repo-native and
+should not be normalized.
+
+### Hugging Face search
+
+```
+https://huggingface.co/models?apps=llama.cpp&sort=trending
+https://huggingface.co/<repo>?local-app=llama.cpp
+https://huggingface.co/api/models/<repo>/tree/main?recursive=true
+```
+
+## Running a model
+
+### Download + serve (one command from Hugging Face)
+
+```sh
+# CPU-only (no GPU offload)
+llama-server -hf bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF:Q4_K_M \
+  -c 8192 \
+  -ngl 0 \
+  --host 0.0.0.0 \
+  --port 8080
+```
+
+### Download first, then serve (manual)
+
+```sh
+# Download (llama.cpp handles the Hugging Face fetch)
+llama-cli -hf bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF:Q4_K_M \
+  --dump-model /home/clawdie/models/
+
+# Serve
+llama-server -m /home/clawdie/models/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf \
+  -c 8192 \
+  -ngl 0 \
+  --host 0.0.0.0
+```
+
+### Test the endpoint
+
+```sh
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Explain FreeBSD jails in one sentence."}],
+    "max_tokens": 64
+  }'
+```
+
+The server exposes an OpenAI-compatible `/v1/chat/completions` endpoint — any
+tool that speaks the OpenAI API can point at it.
+
+### As a system service
+
+```sh
+# /etc/rc.conf
+llama_server_enable=YES
+llama_server_model=/home/clawdie/models/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf
+llama_server_args="--host 0.0.0.0 --port 8080 -ngl 0 -c 8192"
+```
+
+## Hive integration (planned)
+
+llama.cpp models are a natural fit for the hive routing layer
+([hive-routing](./hive-routing.md)). A node with 32 GB RAM advertising a 32B
+model becomes a preferred target for classification, summarization, and small
+code-review tasks — the hive router picks local when the capability matches and
+the cloud when it doesn't. The model is listed in the node's
+[runtime-inventory](./runtime-inventory.md) alongside CPU, RAM, and disk.
+
+## Pi integration (round-trip tested)
+
+Pi talks to llama.cpp through its `openai-completions` client — the same one
+used by the built-in DeepSeek and Z.AI providers. Round-trip tested on valhala
+(FreeBSD 15.1, Pi @latest, 14B R1 Distill Qwen via llama.cpp :8080).
+
+Test result:
+
+```
+$ pi --provider llama-valhala -p "reply with the single word: ok"
+ok
+```
+
+The provider entry for `~/.pi/agent/models.json`:
+
+```json
+{
+  "providers": {
+    "llama-valhala": {
+      "baseUrl": "http://localhost:8080/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "<from /v1/models>",
+          "name": "R1 14B (valhala · CPU · async)",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 32768,
+          "maxTokens": 4096,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}
+```
+
+Design decisions — round-trip tested on valhala:
+
+- `"api": "openai-completions"` — confirmed working. Calls `/v1/chat/completions`,
+  which llama.cpp serves natively. `"openai-responses"` would 404.
+- Keyless auth — omit `apiKey`, `authHeader`, and `headers`. Pi sends no
+  auth, llama.cpp accepts it.
+- `baseUrl` is required in the schema, camelCase (not `baseURL`).
+- Pi's chat-completions client parses `reasoning_content` (proven by the
+  built-in DeepSeek R1 provider and confirmed on valhala), so R1 reasoning
+  traces survive the transport layer intact.
+
+## References
+
+- [Benchmarks (valhala)](./llama-cpp-benchmarks.md) — measured 8B vs 14B on Xeon E5-2620
+- [llama.cpp GitHub](https://github.com/ggerganov/llama.cpp)
+- [GGUF + llama.cpp on Hugging Face](https://huggingface.co/docs/hub/gguf-llamacpp)
+- [Hermes llama-cpp skill](https://code.smilepowered.org/clawdie/hermes-soul/src/branch/debby/skills/mlops/inference/llama-cpp/SKILL.md)
+- [bare-metal-freebsd](./bare-metal-freebsd.md) — HP ML350p hardware notes
+````

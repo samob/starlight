@@ -1,0 +1,127 @@
+---
+type: Cost Model
+title: "Cost model"
+description: "Byte-stable prefixes, cache-hit metering, auto-escalation, T14 compaction."
+tags: [cost, model]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-deepseek/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Cost model
+
+← [index](./index.md)
+
+## What this is
+
+Colibri tracks every token that passes through an agent session and meters cost
+against a configurable budget. The key insight: **cache-hit tokens cost ~120×
+less** than fresh tokens on DeepSeek — so the prompt prefix is engineered to be
+byte-stable across requests, maximizing cache hits. Three cost modes (fast,
+smart, max) represent different points on the speed/cost trade-off, and the
+model auto-escalates when a cheaper mode can't keep up.
+
+## Decisions
+
+### Byte-stable prompt prefix → cache-hit metering
+
+The system prompt and early context blocks are **byte-for-byte identical**
+across consecutive requests to the same DeepSeek endpoint. DeepSeek's cache-hit
+pricing discounts these by ~99%. Colibri's `colibri-deepseek` probe determines
+the exact token-count split between cached and fresh tokens per request, and
+the cost tracker records both so the session budget reflects the **actual**
+discounted cost, not the nominal token count.
+
+**Why not just count tokens**: token counting with an offline tokenizer gives
+you an upper bound but not the real cost. DeepSeek's API sometimes re-caches and
+sometimes doesn't — the probe measures what actually happened. The discount is
+too large (~120×) to leave unmeasured.
+
+→ [headroom-sidecar](./headroom-sidecar.md),
+[`COLIBRI-TOKENOMICS-TRIFECTA.md`](../COLIBRI-TOKENOMICS-TRIFECTA.md),
+[`crates/colibri-deepseek/src/lib.rs`](../../crates/colibri-deepseek/src/lib.rs)
+
+### Three cost modes (fast → smart → max)
+
+| Mode  | Budget (tokens) | Behavior                                                                   |
+| ----- | --------------- | -------------------------------------------------------------------------- |
+| Fast  | 16K             | Maximum cache-hits, minimum fresh tokens. Rejects large expansions early.  |
+| Smart | 64K             | Default. Balances cache reuse with room for follow-up turns.               |
+| Max   | 256K            | Almost never hits budget. For one-shot deep tasks where cost is secondary. |
+
+The daemon **auto-escalates** when a session exhausts its budget in a lower
+mode: fast → smart → max. Escalation is one-way (never downgrades mid-session).
+
+**Why three modes, not a continuous slider**: simplicity wins here. Three
+well-understood points cover the space — operators pick by risk appetite, not
+by fine-tuning a number. The escalation chain means "start cheap, pay more only
+if it works."
+
+→ [`COLIBRI-TOKENOMICS-TRIFECTA.md`](../COLIBRI-TOKENOMICS-TRIFECTA.md),
+[`crates/colibri-daemon/src/cost.rs`](../../crates/colibri-daemon/src/cost.rs)
+
+### T14 compaction (budget trim, not truncate)
+
+When a session is about to exceed its budget, Colibri compacts the tool results
+in the volatile region — it sends them through the headroom sidecar for
+summarization, then trims the oldest volatile blocks until the prompt fits
+within budget. The **prefix** (system prompt, static context) is never trimmed
+— only the volatile suffix.
+
+If compaction is insufficient and auto-escalation is enabled, the mode steps up
+before truncating.
+
+**Why not just truncate**: truncating mid-conversation loses context the agent
+needs to continue. Compaction preserves the semantic content at lower token cost.
+The headroom sidecar is optional (off by default); without it, the fallback is
+simple truncation.
+
+→ [headroom-sidecar](./headroom-sidecar.md),
+[`crates/colibri-daemon/src/session.rs`](../../crates/colibri-daemon/src/session.rs)
+
+### Cache-hit probe (DeepSeek-specific)
+
+The `colibri-deepseek` crate sends a preflight request with a known prompt to
+the DeepSeek API and parses the response headers to determine the cache-hit
+split (prompt_cache_hit_tokens / prompt_cache_miss_tokens). This is
+provider-specific — DeepSeek is the only provider that exposes this granularity.
+The probe runs once per session configuration change, not per request.
+
+**Why a probe and not a hook**: middleware that intercepts every API response
+would couple cost tracking to the HTTP layer. A probe decouples it — the cost
+tracker asks "what was the cache ratio?" and the probe answers, independently of
+how the request was made.
+
+→ [`crates/colibri-deepseek/src/lib.rs`](../../crates/colibri-deepseek/src/lib.rs)
+
+### Per-task cost persistence (T1.5 — shipped)
+
+zot agents emit `usage` events (input/output/cache tokens, cost in USD).
+Glasspane accumulates these into `PaneUsage` (micro-cent precision, Eq-safe).
+When the daemon heartbeat detects agent exit, it reads the accumulated usage,
+builds a `TaskCost` struct, and calls `store.set_task_cost()` — persisting
+8 columns (provider, model, input/output/cache tokens, cost, success,
+finished_at) onto the task row. MCP exposes `colibri_get_task_cost` for
+agents to query historical cost data (e.g., "what model is cheapest for
+this workload?").
+
+→ [`crates/colibri-ledger/src/lib.rs`](../../crates/colibri-ledger/src/lib.rs)
+(`TaskCost`, `set_task_cost`),
+[`crates/colibri-glasspane/src/lib.rs`](../../crates/colibri-glasspane/src/lib.rs)
+(`PaneUsage`, `add_cost`),
+[`crates/colibri-contracts/src/lib.rs`](../../crates/colibri-contracts/src/lib.rs)
+(`TaskCostSummary`)
+
+## See also
+
+- [deepseek-pricing](./deepseek-pricing.md) — per-token pricing table with peak-valley rates
+- [task-board](./task-board.md) — the scheduler that dispatches tasks within session budgets
+- [contracts](./contracts.md) — TaskCostSummary schema v1
+- [mother-hive](./mother-hive.md) — MCP architecture (different cost domain)
+- [quality-gates](./quality-gates.md) — the gate that validates cost-mode parsing

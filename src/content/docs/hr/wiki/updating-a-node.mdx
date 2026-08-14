@@ -1,0 +1,154 @@
+---
+type: Operational Procedure
+title: "Updating a node — base vs packages"
+description: "Colibri wiki page: Updating a node — base vs packages"
+tags: []
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-daemon/src/spawner.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Updating a node — base vs packages
+
+← [index](./index.md) | → [bare-metal-freebsd](./bare-metal-freebsd.md)
+
+Every FreeBSD node in the hive has **two software layers with two separate
+update mechanisms**, and which base mechanism applies depends on how the
+node was installed. Getting this wrong has security teeth: an operator who
+runs `pkg upgrade`, sees "0 updates", and concludes the system is current
+may have skipped a thousand base-system patches. That exact scenario was
+confirmed on valhala (07.jul.26): `pkg upgrade` reported nothing to do
+while `freebsd-update fetch` held 1092 patches (15.1-RELEASE → p1).
+
+## The two layers
+
+| Layer    | What lives there                                         | Updated by                        |
+| -------- | -------------------------------------------------------- | --------------------------------- |
+| Base OS  | kernel, `/bin`, `/usr/bin`, libc, `sshd`                 | depends on host class — see below |
+| Packages | XFCE, GPU drivers, CLI tools, everything in `/usr/local` | `pkg upgrade` on every node       |
+
+## The two host classes
+
+| Class        | Examples                        | Base OS updated by                                  |
+| ------------ | ------------------------------- | --------------------------------------------------- |
+| pkgbase host | osa (build host), mother        | `pkg upgrade` (base ships as FreeBSD-base packages) |
+| release host | valhala, any bsdinstall install | `freebsd-update fetch install`                      |
+
+A release host is what the standard FreeBSD installer produces — base is a
+monolithic release managed by binary patches. A pkgbase host gets its base
+from `pkg` repositories, so one `pkg upgrade` covers both layers. Deployed
+Clawdie nodes default to the release-host model; pkgbase migration is
+possible but deliberate, never accidental.
+
+## Which kind of node am I on?
+
+```sh
+pkg which /bin/sh
+```
+
+- `…installed by package FreeBSD-runtime…` → **pkgbase host**, base updates
+  come through `pkg upgrade`.
+- `…was not found in the database` → **release host**, base updates come
+  through `freebsd-update`.
+
+To read the actual base patch level on any node (kernel, running kernel,
+userland):
+
+```sh
+freebsd-version -kru
+```
+
+If userland says `15.1-RELEASE` and the advisories are at `p3`, the node is
+behind regardless of what `pkg upgrade` says.
+
+## The footgun: never mix the mechanisms
+
+Each base mechanism believes it owns `/usr/bin`. Running `freebsd-update`
+on a pkgbase host overwrites package-managed base files behind pkg's back;
+pointing pkgbase repositories at a release host makes pkg adopt files it
+did not install. Both directions corrupt the base in ways neither tool can
+repair — the fix is reinstalling. Detect first (previous section), then
+update.
+
+## Boot environments — the pre-patch safety net
+
+`freebsd-update install` on a release host does not patch blindly: before it
+touches the running base it clones the root dataset into a **boot environment**
+(a ZFS clone that begins life as a snapshot). This is the `CreateBootEnv`
+directive in `/etc/freebsd-update.conf`. The p1 install on valhala (08.jul.26)
+left one behind — the `<version>_<date>_<time>` row is the pre-patch (p0)
+state, `default` is the running p1:
+
+```
+BE                             Active Mountpoint Space Created
+15.1-RELEASE_2026-07-08_220014 -      -          429M  2026-07-08 22:00
+default                        NR     /          3.34G 2026-07-07 23:40
+```
+
+That backup BE is a one-command rollback: `bectl activate` it and reboot to
+undo a patch that wedged the kernel. Its `Space` figure is _divergence_, not
+size — only the blocks that changed since the snapshot (here, the p1 world).
+
+To stop `freebsd-update` creating these, set it explicitly (not just comment
+the line — the compiled default leans toward creating the BE):
+
+```
+# /etc/freebsd-update.conf
+CreateBootEnv no
+```
+
+Disable it only if you drive BEs by hand — the auto-BE is cheap insurance, and
+turning it off makes the rollback net your own responsibility.
+
+### Starting fresh — collapse to one named BE
+
+Once a patch is confirmed booting, drop the auto backup and rename the good
+state to something deliberate. You **cannot** rename the booted BE (`default`)
+in place — its dataset is mounted at `/` — so the pattern is destroy-backup →
+create-new → activate → reboot, then destroy the old `default` from inside the
+new BE:
+
+```
+root@valhala:~ # bectl list
+BE                             Active Mountpoint Space Created
+15.1-RELEASE_2026-07-08_220014 -      -          429M  2026-07-08 22:00
+default                        NR     /          3.34G 2026-07-07 23:40
+root@valhala:~ # bectl destroy 15.1-RELEASE_2026-07-08_220014
+root@valhala:~ # bectl create p1-start
+root@valhala:~ # bectl activate p1-start
+Successfully activated boot environment p1-start
+```
+
+**A BE only lives as long as its pool.** A reinstall or a fresh `zpool create`
+wipes every BE and snapshot with it — which is why a freshly reinstalled
+release host reports `15.1-RELEASE` (p0) even when the previous install was
+patched to p1. The patch level travels with the dataset, not the hardware, so
+re-running `freebsd-update fetch install` after any rebuild is expected, not a
+regression.
+
+## Live-USB caveat
+
+On a live stick, `freebsd-update` works and persists to the ZFS pool — but
+it diverges the node from its build image, and the next image release
+supersedes the divergence. The intended upgrade path for live nodes is a
+new image; `freebsd-update` is for _installed_ systems like valhala.
+
+The build-time durability of that pool — why a freshly built image does not
+ship zeroed ZFS labels — is analyzed against upstream source in the `parents`
+repo: [`notes/zfs-label-flush.md`](https://code.smilepowered.org/clawdie/parents/src/branch/main/notes/zfs-label-flush.md)
+(openzfs + freebsd-src at pinned SHAs). That note is the build-time cousin of
+this runtime page.
+
+## Provenance
+
+Confirmed on valhala (HP ML350p Gen8, 07.jul.26) after a deliberate
+operator decision to keep the machine on the conventional release-host
+path. The hardware-specific confirmation lives in the clawdie-iso repo's
+ML350p hardware reference under `docs/` ("System upgrade path" section);
+this page carries the fleet-wide rule.

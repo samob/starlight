@@ -1,0 +1,186 @@
+---
+type: Reference
+title: "Bare-Metal — FreeBSD operator notes"
+description: "FreeBSD on physical hardware (HP ML350p) — iLO, IPMI, USB boot quirks, sensor monitoring gaps."
+tags: [bare]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "docs/MULTI-AGENT-HOST.md"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Bare-Metal — FreeBSD operator notes
+
+← [index](./index.md) | → [ts-legacy](./ts-legacy.md)
+
+Practical notes for testing Clawdie images on physical hardware (HP ProLiant
+ML350p Gen8). The Linux agent owns the comprehensive
+[bare-metal-server-management skill](https://code.smilepowered.org/clawdie/hermes-soul/src/branch/debby/skills/devops/bare-metal-server-management/SKILL.md)
+— this page covers FreeBSD-specific gaps: tools, image boot quirks, and
+what the build host needs to seed for headless operation.
+
+## Hardware summary
+
+| Property     | Value                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------ |
+| Model        | HP ProLiant ML350p Gen8                                                                    |
+| CPU          | 2× Xeon E5-2620 (Sandy Bridge-EP, 6c/12t each, 2.0 GHz) — AVX1 only, no AVX2/FMA/BMI2/F16C |
+| RAM          | 36 GB installed, ~12 GB usable under legacy BIOS (MMIO hole)                               |
+| Management   | iLO 4 (192.168.1.2, dedicated NIC)                                                         |
+| iLO license  | Check: `show /map1/oemhp_license1` — need **iLO Advanced** for virtual media               |
+| Boot medium  | USB stick (rear port) or iLO virtual CD-ROM                                                |
+| Scratch disk | `da0` (279 GB, reformattable)                                                              |
+| Current role | Verify(4) target — boots Clawdie live USB, tests seed PIN + pi                             |
+
+## Capability profile (for hive routing)
+
+This node's hardware limits what local models it can serve. The
+[runtime-inventory](./runtime-inventory.md) probe records these facts so the
+hive router can decide: send the task here (local, fast, zero API cost) or to
+the cloud (slower, costs tokens, better model).
+
+| Capability     | Value                                         | Implication                                                          |
+| -------------- | --------------------------------------------- | -------------------------------------------------------------------- |
+| CPU SIMD       | AVX1 only (no AVX2, FMA, BMI2, F16C)          | llama.cpp needs source build with SIMD flags off                     |
+| Usable RAM     | ~12 GB                                        | Largest loadable model: 14B Q5_K_M (10.5 GB)                         |
+| 14B inference  | ~1 tok/s generation, ~430 ms/tok prompt       | Async/batch only — NOT interactive. 200-tok reasoning = 3+ min wall  |
+| 8B inference   | ~1.8 tok/s gen, ~200 ms/tok prompt (measured) | Async agent loops, classification. Still not interactive on this CPU |
+| Disk (scratch) | 279 GB on `da0`                               | Model cache: one 14B + embeddings                                    |
+| GPU            | Matrox G200 (iLO, no compute)                 | CPU-only inference only                                              |
+| NIC            | 1 Gbps                                        | Model download ~70 min for 10 GB                                     |
+
+**Router rule:** valhala advertises **embeddings + batch classification + async code review**.
+Embeddings are a single forward pass (fast); classification is short-output; code
+review runs at ~1 tok/s with 1024+ token budgets (~16 min per review). The 14B's
+reasoning quality is correct on real Colibri code (validated on Rust borrow-checker
+analysis) — latency is the cost, not accuracy. Prose generation (summarization,
+interactive reasoning) routes to cloud.
+
+[llama-cpp](./llama-cpp.md) covers the full install + model selection guide,
+including the Sandy Bridge build flags.
+
+## Two paths to the hardware
+
+The live USB can reach the ML350p's BMC through two channels. Both are
+password-authenticated — SSH keys are impractical to provision per-iLO on
+a throwaway USB stick.
+
+| Path      | Tool              | How                                                             | When                                                                      |
+| --------- | ----------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| IPMI LAN+ | `ipmitool`        | `ipmitool -H 192.168.1.2 -U Administrator -E sensor`            | First choice — standard, gives telemetry in one command                   |
+| SSH SMASH | `ssh` + `sshpass` | `sshpass -e ssh $KEX Administrator@192.168.1.2 "show /system1"` | Fallback — IPMI-over-LAN is often disabled by default on iLO for security |
+
+Try IPMI first. If it's off (common on factory-default iLO 4), SSH SMASH
+is always available and gives the same data through a different protocol.
+
+### ipmitool — IPMI LAN+ (preferred path)
+
+`ipmitool` (`sysutils/ipmitool`) is already in the package list.
+Use `-E` (reads `IPMI_PASSWORD` from the environment) instead of `-P <pw>`
+— keeps the password out of `ps` argv and shell history.
+
+```sh
+export IPMI_PASSWORD="<redacted>"
+
+# Sensor reading (temperature, fans, voltages)
+ipmitool -H 192.168.1.2 -U Administrator -E sensor
+
+# Power control
+ipmitool -H 192.168.1.2 -U Administrator -E power status
+ipmitool -H 192.168.1.2 -U Administrator -E power on
+
+# Set one-time PXE boot
+ipmitool -H 192.168.1.2 -U Administrator -E chassis bootdev pxe
+```
+
+### sshpass — SSH SMASH (reliable fallback)
+
+`sshpass` (`security/sshpass`, added 04.jul.2026) provides non-interactive
+password auth for iLO SMASH/SSH. Use `-e` (reads `SSHPASS` from the
+environment) or `-f <file>` (mode 0600) — never `-p <password>` which
+exposes the password in `ps` argv to any local user.
+
+```sh
+export SSHPASS="<redacted>"
+KEX="-o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa"
+
+# System overview
+sshpass -e ssh $KEX Administrator@192.168.1.2 "show /system1"
+
+# IML log (most recent entry)
+sshpass -e ssh $KEX Administrator@192.168.1.2 "show /system1/log1/record1"
+```
+
+iLO 4 needs the legacy KEX algorithms — without them SSH fails outright.
+
+## Image boot quirks (FreeBSD on HP Gen8)
+
+### USB boot
+
+The Clawdie `.img` is a raw disk image, not ISO 9660. Write it to a USB
+stick with `dd`:
+
+```sh
+# FreeBSD
+xz -dc clawdie-quindecim-<version>.img.xz | dd of=/dev/da0 bs=1M status=progress conv=fsync && sync
+
+# Linux
+xz -dc clawdie-quindecim-<version>.img.xz | dd of=/dev/sdX bs=4M status=progress conv=fsync && sync
+```
+
+### iLO virtual media — CD-ROM only, never floppy
+
+iLO 4 virtual media supports two emulation types:
+
+| Command                  | Emulates | Max size | Use for                                        |
+| ------------------------ | -------- | -------- | ---------------------------------------------- |
+| `vm cdrom insert <url>`  | DVD-ROM  | ~4.7 GB  | ISO 9660 images — **this is what you want**    |
+| `vm floppy insert <url>` | Floppy   | ~1.44 MB | Tiny payloads — **will crash on large images** |
+
+Presenting a raw `.img` (28 GB) as a floppy causes a BIOS boot loop. Always
+use `vm cdrom` and an ISO 9660 image. The Clawdie `.img` is NOT ISO 9660 —
+it must boot from USB, not iLO virtual media.
+
+### BIOS boot order
+
+F11 during POST → Boot Menu. The ML350p Gen8 remembers the last boot device.
+If it won't boot from USB, enter BIOS setup (F9) and check:
+
+- **USB Boot Support:** Enabled
+- **Boot Order:** USB Key before HDD
+
+## Requirements for next ISO build
+
+| Package    | Port                | Size    | Status                                     |
+| ---------- | ------------------- | ------- | ------------------------------------------ |
+| `ipmitool` | `sysutils/ipmitool` | ~1.5 MB | Already in `pkg-list-live-operator.txt:93` |
+| `sshpass`  | `security/sshpass`  | ~50 KB  | Added `feat/add-sshpass`, pending merge    |
+
+### iLO credentials on the seed partition (future)
+
+The seed partition could carry iLO credentials (IP + password) alongside
+provider keys, enabling the booted USB to auto-detect and manage its host
+hardware:
+
+```
+# seed/env addition (future)
+ILO_HOST=192.168.1.2
+ILO_USER=Administrator
+ILO_PASS=<redacted>
+```
+
+This is a follow-up task — not needed for Verify(4) which uses manual iLO
+access from a separate machine.
+
+## TODO for next img build
+
+- [x] `ipmitool` in package list ✓ (already present)
+- [x] `sshpass` in package list ✓ (`feat/add-sshpass`, pending merge)
+- [ ] Verify ipmitool sensor readout from booted USB on ML350p
+- [ ] Verify iLO reachability from live USB (same subnet? DHCP on management NIC?)
+- [x] Cross-link from clawdie-iso-build skill ✓ (04.jul.2026)

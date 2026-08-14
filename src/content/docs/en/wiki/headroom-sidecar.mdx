@@ -1,0 +1,92 @@
+---
+type: Reference
+title: "Headroom sidecar"
+description: "Colibri wiki page: Headroom sidecar"
+tags: [headroom]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-daemon/src/session.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Headroom sidecar
+
+← [index](./index.md)
+
+Colibri can optionally ask a local `headroom-ai` sidecar to compress tool results
+before they are rendered through the session read path.
+
+This is **off by default**. The daemon does not start or supervise Headroom; it
+only connects to an already-running Unix socket when explicitly enabled.
+
+## Configuration
+
+```sh
+COLIBRI_HEADROOM_ENABLED=1
+COLIBRI_HEADROOM_SOCKET=/var/run/colibri/headroom.sock  # optional default
+```
+
+Start the sidecar with a Python environment that can import `headroom`:
+
+```sh
+python3 scripts/headroom-sidecar.py --socket /var/run/colibri/headroom.sock
+```
+
+Then start `colibri-daemon` with the environment above. Check connection state
+with `colibri status`; the status JSON includes:
+
+```json
+{
+  "headroom": {
+    "enabled": true,
+    "socket": "/var/run/colibri/headroom.sock",
+    "connected": true
+  }
+}
+```
+
+## Protocol
+
+The daemon keeps one Unix-socket connection open and sends newline-delimited JSON
+requests. The sidecar must support multiple requests on that same accepted
+connection.
+
+Request:
+
+```json
+{"id":"tool-name","raw":"tool output text","role":"tool"}
+```
+
+Response:
+
+```json
+{"id":"tool-name","compressed":"shorter text","tokens_before":100,"tokens_after":25}
+```
+
+If `tokens_after >= tokens_before`, Colibri keeps the original tool result. If
+the sidecar errors, disconnects, or times out, Colibri degrades to the original
+uncompressed content.
+
+Current daemon timeout: 5 seconds per sidecar request.
+
+## Scope and caveats
+
+- Compression is opt-in and best-effort.
+- The sidecar currently affects session prompt/message rendering paths that pass
+  a `HeadroomSidecar`; it is not a global daemon-wide replacement for existing
+  cost-mode compaction.
+- Keep `COLIBRI_HEADROOM_ENABLED=0` for ISO/live-USB defaults unless Headroom is
+  staged and validated on the target image.
+  FreeBSD: ONNX/ORT-backed extras need local packaging; use a known-good Python
+  environment and validate `scripts/headroom-sidecar.py` directly before enabling
+  the daemon flag.
+
+## See also
+
+- [cost-model](./cost-model.md) — cost discipline and when to use Headroom
+- [operator-cli](./operator-cli.md) — status JSON reports headroom connection state

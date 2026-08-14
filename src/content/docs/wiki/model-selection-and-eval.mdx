@@ -1,0 +1,476 @@
+---
+type: Reference
+title: "T2.x: Model Selection & Evaluation Harness"
+description: "Colibri wiki page: T2.x: Model Selection & Evaluation Harness"
+tags: [model]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-deepseek/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# T2.x: Model Selection & Evaluation Harness
+
+**Status:** Phases 1–3 shipped (#264, #280, #285). Phase 4 (cloud eval) planned.
+**Date:** 25.jun.2026
+**Driven by:** T1.5 per-task cost tracking (shipped) → T2.x model selection + eval
+
+Scope note (Phase 3, 3a): selection is **model-only** — success rate is the
+primary signal, cost is a tiebreaker, `cost_mode` owns token spend. Per-
+`task_type` routing is deferred to Phase 4 (no task_type data yet). The
+selector reads [`Store::model_success_rates`] and runs at agent spawn
+(long-lived harnesses, not per-task dispatch); gated by
+`COLIBRI_MODEL_SELECTION`, off by default.
+
+> **Companion doc:** [hive-routing](./hive-routing.md) — the capability matrix,
+> machine identity, and routing engine. This doc covers what the routing engine
+> _optimizes for_ (model selection) and how it knows if it's winning (eval harness).
+
+## What Exists Today
+
+| Component                 | State                                                                                          | Gap                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `task_costs` (PostgreSQL) | Per-task cost rows with `provider`, `model`, `cost_usd`, `success`                             | `success` is boolean — agent process exited 0 or not |
+| `hive_nodes.capabilities` | JSONB with `has_gpu`, `can_run_local_llm`, `ollama_models`                                     | No success-rate history per model per node           |
+| Cost tiers (T0–T3)        | Defined in hive-routing.md: local ($0), DeepSeek ($0.27/1M), Gemini ($0.15/1M), Claude ($3/1M) | Phase 3 `select_model` now factors cost into routing |
+| Agent harness             | Spawns zot/pi, tracks session usage                                                            | No quality measurement beyond "did it exit 0?"       |
+
+## The Problem
+
+We have a capability matrix (what can each node do?), cost tracking (what did it cost?), and cost tiers (free → expensive). What we _don't_ have:
+
+1. **Success measurement beyond "exit 0"** — An agent can exit successfully but produce garbage output. A $5 Claude run that exits 0 but hallucinates is a failure, not a success.
+2. **Model selection logic** — The scheduler can see "node X has ollama + qwen:7b" but doesn't know if qwen:7b has a 95% success rate on code tasks or a 40% success rate on reasoning tasks.
+3. **Feedback loop** — Without eval, we're routing blind. Every task is a coin flip. We can't optimize for "maximize success per dollar" because we don't know what success looks like.
+
+**The core tension:** Model selection needs eval data to make good decisions, but eval needs to run quickly (per-task, non-blocking) to provide timely feedback. If eval is slow, you can't route the next task based on the last task's result.
+
+## Design Goals
+
+1. **Success is multi-dimensional** — Not just "exit 0". Binary completion + quality score + correctness check.
+2. **Eval is fast** — Per-task eval should take < 5s. Blocking eval on every task kills throughput.
+3. **Eval is cheap** — If eval costs more than the task it's evaluating, we've lost. Use local LLMs for eval when possible.
+4. **Model selection is data-driven** — Not hardcoded rules. The routing decision uses historical success rates per (model, task-type) pair.
+5. **Optimization target: success per dollar** — Not "cheapest" (could fail) or "most expensive" (could waste). The routing engine picks the model that maximizes P(success) / cost.
+6. **Graceful degradation** — If eval is unavailable, fall back to binary success (exit code). If model-selection data is unavailable, fall back to capability match + cost tier.
+
+---
+
+## Evaluation Harness
+
+### What "success" means
+
+Success is not binary. A task can:
+
+- **Complete correctly** — produced the expected output, exit 0, quality score 1.0
+- **Complete partially** — exit 0, but output is incomplete or degraded, quality score 0.6
+- **Fail gracefully** — exit non-zero, but error message is clear and task can be retried with different model
+- **Fail silently** — exit 0, but output is garbage (hallucination, wrong answer, broken code)
+
+**Multi-dimensional success:**
+
+```json
+{
+  "task_id": "abc-123",
+  "agent_id": "zot-42",
+  "exit_code": 0,
+  "completion_status": "success|partial|fail|silent-fail",
+  "quality_score": 0.95,  // 0.0–1.0
+  "correctness_check": "pass|fail|skipped",
+  "eval_latency_ms": 2300,
+  "eval_provider": "local-deepseek-r1-7b"
+}
+```
+
+### Where eval runs
+
+**Three eval modes, tried in order:**
+
+1. **Agent self-report** — The agent emits a structured completion event with quality assertion. Fastest (0ms latency), but requires agent cooperation.
+   - Works for: agents that emit `usage` events with quality metadata
+   - Fallback: if agent doesn't emit quality, skip to mode 2
+
+2. **Local LLM eval** — A lightweight model (DeepSeek-r1 7b, Qwen 2.5 7b) evaluates the task output against the task spec. Runs on a local node with eval-eligible models.
+   - Works for: most tasks (code review, text evaluation, correctness checks)
+   - Cost: $0.00 (local), latency: 1–5s
+   - Fallback: if no local eval model, skip to mode 3
+
+3. **Cloud LLM eval** — A cloud provider (DeepSeek, Claude) evaluates the output. Slower, costs money, but highest quality eval.
+   - Works for: complex tasks that local LLM can't evaluate
+   - Cost: $0.001–$0.01 per eval (depends on provider)
+   - Fallback: if all eval modes unavailable, treat as "eval skipped" → binary success only
+
+### Eval triggers
+
+Eval runs **asynchronously** after task completion:
+
+```
+task completes → agent exits with output
+  → daemon writes task_cost to SQLite (binary success)
+  → daemon spawns eval job (fire-and-forget)
+    → eval job picks mode (self-report → local → cloud)
+    → eval job computes quality score + correctness
+    → eval job writes result to task_eval table
+    → eval job updates task_costs.quality_score (if better data available)
+```
+
+**Why async:** The eval job is independent of the task completion path. If eval is slow (5s for local, 15s for cloud), the next task can still be dispatched immediately. The routing engine uses the _most recent_ eval data, even if it's stale by one task.
+
+### Eval schema
+
+```sql
+CREATE TABLE task_eval (
+    task_id         TEXT PRIMARY KEY,
+    agent_id        TEXT NOT NULL,
+    eval_mode       TEXT NOT NULL,  -- 'self-report', 'local-llm', 'cloud-llm', 'skipped'
+    completion_status TEXT,         -- 'success', 'partial', 'fail', 'silent-fail'
+    quality_score   REAL,           -- 0.0–1.0
+    correctness_check TEXT,         -- 'pass', 'fail', 'skipped'
+    eval_provider   TEXT,           -- 'local-deepseek-r1-7b', 'cloud-claude-sonnet-4'
+    eval_latency_ms INTEGER,
+    eval_cost_usd   REAL DEFAULT 0.0,
+    evaluated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+The `task_costs` table gets a new optional column:
+
+```sql
+ALTER TABLE task_costs ADD COLUMN quality_score REAL;
+ALTER TABLE task_costs ADD COLUMN eval_mode TEXT;
+```
+
+These are populated by the eval harness after task completion.
+
+### Eval modes in detail
+
+#### Mode 1: Agent self-report
+
+The agent harness emits a structured JSON event at completion:
+
+```json
+{
+  "type": "task_complete",
+  "task_id": "abc-123",
+  "completion_status": "success",
+  "quality_score": 0.95,
+  "self_assertion": "Task completed successfully. Output matches spec."
+}
+```
+
+**Pros:** Zero latency, zero cost.
+**Cons:** Requires agent cooperation. Agents can lie (accidentally or intentionally). No independent verification.
+
+**When to use:** When the agent is trusted (e.g., zot agent with known-good runtime). Skip for untrusted agents.
+
+#### Mode 2: Local LLM eval
+
+A local model evaluates the task output:
+
+```
+prompt = """
+You are an evaluator. Given the task spec and the agent output, determine:
+1. Did the agent complete the task? (completion_status: success/partial/fail)
+2. Quality score (0.0–1.0): 0.0 = garbage, 1.0 = perfect
+3. Correctness check: Does the output match the expected behavior?
+
+Task spec: {task_spec}
+Agent output: {agent_output}
+
+Respond in JSON:
+{"completion_status": "...", "quality_score": 0.95, "correctness_check": "pass|fail"}
+"""
+```
+
+**Pros:** $0.00 cost, 1–5s latency, no external dependency.
+**Cons:** Local model quality is limited. A 7b model can't reliably eval complex reasoning tasks.
+
+**When to use:** For tasks where the local eval model is capable (code review, text evaluation, simple correctness checks). Skip for tasks the local model can't understand.
+
+#### Mode 3: Cloud LLM eval
+
+A cloud provider evaluates the output:
+
+```
+prompt = """
+You are an expert evaluator. Given the task spec and the agent output, determine:
+1. Did the agent complete the task? (completion_status: success/partial/fail/silent-fail)
+2. Quality score (0.0–1.0): 0.0 = garbage, 1.0 = perfect
+3. Correctness check: Does the output match the expected behavior?
+4. Silent failure detection: Did the agent exit 0 but produce garbage?
+
+Task spec: {task_spec}
+Agent output: {agent_output}
+
+Respond in JSON:
+{"completion_status": "...", "quality_score": 0.95, "correctness_check": "pass|fail"}
+"""
+```
+
+**Pros:** Highest quality eval. Can detect silent failures that local models miss.
+**Cons:** Costs money ($0.001–$0.01 per eval), slower (5–15s), external dependency.
+
+**When to use:** For complex tasks where local eval is insufficient, or when the task cost is high enough to justify eval cost ($5 Claude run → $0.01 eval is worth it).
+
+### Eval feedback loop
+
+Eval results feed into the routing decision:
+
+```
+task completes → eval runs → quality_score + correctness_check written to task_eval
+  → routing engine queries task_eval for (model, task_type) → (avg_quality, success_rate)
+  → routing engine picks model with highest success_rate for this task_type
+```
+
+**Example:** If DeepSeek-v3 has 95% success on code tasks and 60% success on reasoning tasks, the routing engine routes code tasks to DeepSeek and reasoning tasks to Claude.
+
+**Update frequency:** Eval results are aggregated every 5 minutes (not per-task). This prevents a single outlier from skewing the routing decision.
+
+---
+
+## Model Selection
+
+### The decision
+
+When a task is dispatched, the routing engine picks the model:
+
+**Input:**
+
+- Task requirements (task type, complexity, latency requirement)
+- Capability matrix (which models are available where)
+- Historical eval data (success rate per (model, task_type))
+- Cost tiers (T0 → T3)
+- Cache-hit potential (is this task likely to hit cache?)
+
+**Output:**
+
+- Decision: (node_id, model, provider)
+- Rationale: why this model was picked
+
+**Optimization target:** Maximize P(success) / cost. Not "cheapest" (could fail), not "most expensive" (could waste).
+
+### Model selection algorithm
+
+```
+for each (node, model) in capability_matrix:
+    if model doesn't match task_type: skip
+    if node is offline: skip
+    if latency is critical AND model is slow: skip
+
+    # Historical performance
+    success_rate = query_eval_success_rate(model, task_type)  # last 7 days
+    expected_cost = query_model_cost(model)
+
+    # Score
+    score = success_rate / (expected_cost + epsilon)  # avoid division by zero
+
+    # Cache bonus
+    if model.has_cache_support AND task.is_cache_likely:
+        score *= 1.2
+
+    # Cost tier penalty
+    if cost_tier == T3 AND success_rate < 0.9:
+        score *= 0.5  # don't route expensive models unless they're really good
+
+    scores.append((score, node, model))
+
+winner = max(scores, key=lambda x: x[0])
+return winner
+```
+
+**Fallback:** If no model has eval history (first task of this type), fall back to capability match + cost tier.
+
+### Decision factors (weighted)
+
+| Factor                    | Weight | Rationale                                             |
+| ------------------------- | ------ | ----------------------------------------------------- |
+| Success rate (historical) | 40%    | Primary signal: does this model work for this task?   |
+| Cost per task             | 30%    | Minimize cost per successful task                     |
+| Capability match          | 15%    | Does the model have the right skills/tools?           |
+| Latency                   | 10%    | Important for urgent tasks, less for background tasks |
+| Cache-hit potential       | 5%     | Small bonus for cache-friendly tasks                  |
+
+**Weights are configurable.** An operator can tune the weights based on priorities (cost-optimized vs. latency-optimized vs. quality-optimized).
+
+### Model selection in practice
+
+**Example 1: Non-urgent code review task**
+
+- Task type: code review
+- Latency: not critical (background task)
+- Capability: need code understanding
+- Eval history: DeepSeek-v3 has 92% success on code reviews, 1.2s avg latency, $0.003/task
+- Routing decision: DeepSeek-v3 on mother node
+
+**Example 2: Urgent reasoning task**
+
+- Task type: complex reasoning
+- Latency: critical (user is waiting)
+- Capability: need strong reasoning
+- Eval history: Claude Sonnet has 88% success on reasoning, 4s latency, $2.50/task; DeepSeek has 65% success, 2s latency, $0.004/task
+- Routing decision: Claude Sonnet (quality-critical task, willing to pay for quality)
+
+**Example 3: Background embedding task**
+
+- Task type: embedding generation
+- Latency: not critical
+- Capability: need embedding model
+- Eval history: local nomic-embed-text has 100% success (embeddings are deterministic), $0.00/task
+- Routing decision: local nomic-embed-text on beefy node
+
+---
+
+## Integration with Hive Routing
+
+### Data flow
+
+```
+task arrives at scheduler
+  → query hive_nodes (capability matrix)
+  → query task_eval (historical success rates)
+  → model_selection_algorithm(task, capabilities, success_rates)
+    → returns (node_id, model, provider, rationale)
+  → dispatch task to picked node
+  → task completes → eval runs → quality_score written to task_eval
+  → next task's routing decision uses updated eval data
+```
+
+### Key integration points
+
+1. **Scheduler queries eval data** — `scheduler.select_model(task)` queries `task_eval` for historical success rates per (model, task_type).
+2. **Model selection uses capability matrix** — `hive_nodes.capabilities` tells the scheduler which models are available where.
+3. **Eval updates routing state** — After each task, eval writes to `task_eval`. The next task's routing decision uses the updated data.
+4. **Rationale is logged** — The routing decision includes a rationale: "Picked DeepSeek-v3 because 92% success rate on code tasks, $0.003/task, 1.2s latency." This makes routing auditable.
+
+---
+
+## Implementation Phases
+
+### Phase 1 — Eval Harness MVP (shipped — PR #264)
+
+**Goal:** Binary success + basic quality score from agent self-report.
+
+| Deliverable                                                      | Where             | Lines |
+| ---------------------------------------------------------------- | ----------------- | ----- |
+| `task_eval` table in mother_schema.sql                           | mother_schema.sql | ~15   |
+| `eval_mode` column in task_costs                                 | mother_schema.sql | ~2    |
+| Agent self-report: emit `task_complete` event with quality_score | colibri-glasspane | ~40   |
+| Daemon writes eval result to task_eval                           | colibri-daemon    | ~30   |
+| Query API: `colibri_get_eval(task_id)`                           | colibri-mcp       | ~15   |
+
+**Total:** ~100 lines, 2 days.
+
+**What this gives us:** Eval infrastructure is in place. We're collecting quality scores from agent self-report. This is the minimum viable eval.
+
+### Phase 2 — Local LLM Eval (shipped — PR #280)
+
+**Goal:** Independent eval via local LLM.
+
+| Deliverable                                           | Where          | Lines |
+| ----------------------------------------------------- | -------------- | ----- |
+| Eval prompt template (JSON schema)                    | colibri-daemon | ~30   |
+| Local eval: spawn local LLM with eval prompt          | colibri-daemon | ~60   |
+| Fallback logic: self-report → local → cloud → skipped | colibri-daemon | ~40   |
+| Eval job scheduler (async, fire-and-forget)           | colibri-daemon | ~30   |
+| Eval result merge into task_eval                      | colibri-ledger | ~20   |
+
+**Total:** ~180 lines, 3 days.
+
+**What this gives us:** Independent eval for most tasks. Self-report is still the default, but local LLM eval can verify or override.
+
+### Phase 3 — Model Selection (shipped — PR #285)
+
+**Goal:** Data-driven routing decisions.
+
+| Deliverable                                                                   | Where                       | Lines |
+| ----------------------------------------------------------------------------- | --------------------------- | ----- |
+| `select_model()` function in scheduler                                        | colibri-daemon/scheduler.rs | ~80   |
+| Query eval success rates: `get_model_success_rate(model, task_type)`          | colibri-mcp                 | ~20   |
+| Decision rationale logging                                                    | colibri-daemon              | ~15   |
+| Configurable weights (success_rate, cost, capability, latency, cache)         | colibri-config              | ~25   |
+| Integration with task dispatch: scheduler.pick_model(task) → dispatch to node | colibri-daemon              | ~30   |
+
+**Total:** ~170 lines, 3 days.
+
+**What this gives us:** The routing engine is now data-driven. It picks the model with the best track record for this task type, weighted by cost and capability.
+
+### Phase 4 — Cloud Eval + Feedback Loop (2 days)
+
+**Goal:** Cloud eval for complex tasks, closed feedback loop.
+
+| Deliverable                                         | Where          | Lines |
+| --------------------------------------------------- | -------------- | ----- |
+| Cloud eval: call Claude/DeepSeek with eval prompt   | colibri-daemon | ~50   |
+| Cost accounting: eval_cost_usd added to task_eval   | colibri-ledger | ~10   |
+| Feedback loop: eval results → routing weight update | colibri-daemon | ~30   |
+| Eval aggregation: 5-minute rollup of success rates  | colibri-mcp    | ~25   |
+
+**Total:** ~115 lines, 2 days.
+
+**What this gives us:** Full loop. Eval results inform routing, routing picks the best model, eval verifies the result, loop continues.
+
+---
+
+## Deliverables by Phase
+
+### Phase 1 — Eval MVP (shipped — PR #264)
+
+- `task_eval` table + `eval_mode` column in `task_costs` ✅
+- Agent self-report with quality_score ✅
+- Daemon writes eval result ✅
+- Query API for eval data ✅
+
+### Phase 2 — Local LLM Eval (shipped — PR #280)
+
+- Eval prompt template ✅
+- Local eval job (spawn local LLM via ollama) ✅
+- Fallback chain self-report → local ✅ (→ cloud lands in Phase 4)
+- Async eval (background `spawn_blocking`) ✅
+
+### Phase 3 — Model Selection (shipped — PR #285)
+
+- `select_model()` function ✅
+- Query eval success rates per model — `Store::model_success_rates` ✅
+  (per `task_type` deferred to Phase 4)
+- Decision rationale logging ✅
+- Configurable weights (`COLIBRI_MODEL_SELECTION_WEIGHT_*`) ✅
+- Integration at agent spawn (`recommend_model` → autospawn env) ✅
+
+### Phase 4 — Cloud Eval + Feedback
+
+- Cloud eval (Claude/DeepSeek)
+- Eval cost accounting
+- Feedback loop (eval → routing weight update)
+- 5-minute eval aggregation
+
+**Total:** ~10 days, ~570 lines.
+
+---
+
+## Open Questions
+
+1. **How do we prevent eval gaming?** If agents can self-report quality, they might inflate scores. Solution: require local LLM eval for high-value tasks ($5+). Cloud eval for very high-value tasks.
+
+2. **What's the eval timeout?** If eval takes too long, the next task's routing decision is stale. Solution: 10s max for local eval, 30s max for cloud eval. If timeout, fall back to binary success.
+
+3. **How often do we retrain the routing weights?** If success rates drift (new model version, different data), the weights should adapt. Solution: rolling 7-day window for success rates. Older data decays.
+
+4. **What if a model has no eval history?** First task of a new type has no data. Solution: fall back to capability match + cost tier. The first task is a learning opportunity — its eval result seeds the routing decision.
+
+5. **How do we handle eval cost blowup?** If eval costs more than the task it's evaluating, we've lost. Solution: cap eval cost at 5% of task cost. If eval would cost more, skip it.
+
+6. **What about eval for non-text tasks?** If a task produces an image or binary, text-based eval doesn't work. Solution: task-type-specific eval functions. For now, focus on text tasks.
+
+---
+
+## References
+
+- [hive-routing](./hive-routing.md) — capability matrix, machine identity, routing engine
+- [cost-model](./cost-model.md) — T1.4 cache warming, T1.5 per-task cost tracking
+- [glasspane](./glasspane.md) — agent state machine, usage tracking
+- [task-board](./task-board.md) — task lifecycle

@@ -1,0 +1,114 @@
+---
+type: Operational Procedure
+title: "Jail confinement"
+description: "Colibri wiki page: Jail confinement"
+tags: [jail]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-daemon/src/spawner.rs"
+  last_verified: "2026-08-01"
+  verified_by: "opus-smilepowered"
+  platform_notes: "FreeBSD-only: jail(8), jexec, bastille, vnet, mdo/doas/sudo; Linux: N/A (no native jails)"
+---
+
+# Jail confinement
+
+← [index](./index.md)
+
+## What this is
+
+Colibri can confine spawned agents and external MCP servers inside FreeBSD
+jails. The spawner wraps the subprocess command through `jexec` (persistent
+jails) or `jail -c` (ephemeral jails), so the agent's entire filesystem view
+and network are isolated. stdio passes through unchanged — the agent's JSONL
+still reaches Glasspane, and the MCP host's stdin/stdout transport still works.
+
+## Decisions
+
+### Reuse the spawner's confinement primitive (don't build a parallel one)
+
+The agent spawner and the external-MCP host both need to confine untrusted
+subprocesses. Instead of building a second confinement layer, the MCP host
+reuses the agent spawner's `jail_wrap()` function directly — the same
+`JailConfig` struct, the same `PrivMode` policy, the same `prepare_spawn_command`
+pipeline.
+
+**Why reuse**: two confinement paths → one can drift. The spawner is tested
+(20+ unit tests in `spawner.rs` covering named, ephemeral, staged, priv-mode
+variants). The MCP host gets a battle-tested implementation for free.
+
+→ [`COLIBRI-JAILED-AGENT-SPAWN-DESIGN.md`](../COLIBRI-JAILED-AGENT-SPAWN-DESIGN.md),
+[`crates/colibri-daemon/src/spawner.rs`](../../crates/colibri-daemon/src/spawner.rs)
+(`jail_wrap`, `JailConfig`),
+[`crates/colibri-mcp/src/external.rs`](../../crates/colibri-mcp/src/external.rs)
+
+### Persistent vs ephemeral jails
+
+| Type       | How                                       | When to use                                            |
+| ---------- | ----------------------------------------- | ------------------------------------------------------ |
+| Persistent | `jexec <name>` into an existing jail      | Operator-managed jails with preconfigured environments |
+| Ephemeral  | `jail -c command=<binary>` auto-destroyed | One-shot confinement, no state between runs            |
+
+The `JailConfig` struct uses an enum: if `name` is set, jexec; if `path` is set,
+ephemeral. They're mutually exclusive; `name` takes precedence.
+
+**Why both**: persistent jails are operator-managed infrastructure (a build jail,
+a worker jail that persists between agent runs). Ephemeral jails are for
+untrusted one-shot work — like an external MCP server from a third-party
+registry. The caller picks the lifecycle.
+
+→ [`COLIBRI-JAILED-AGENT-SPAWN-DESIGN.md`](../COLIBRI-JAILED-AGENT-SPAWN-DESIGN.md)
+
+### Priv-mode policy (`doas` everywhere; `mdo`/`helper` opt-in)
+
+The daemon is unprivileged but jail creation requires root. The priv-mode
+policy resolves this without granting the daemon blanket root:
+
+- **`doas`** (default) — deployed hosts. The `colibri` user escalates the jail
+  step via `doas -n`, gated by a `permit nopass` rule for that command. This is
+  the mode used when `COLIBRI_JAIL_PRIV_MODE` is unset.
+- **`mdo`** — opt-in for hosts with `mac_do(4)` configured
+  (`mdo -u root jail -c ...`). Historically the live USB's mode; the image
+  migrated to `doas` from the ground up (15.jul.26) and no longer sets
+  `COLIBRI_JAIL_PRIV_MODE` at all.
+- **`helper`** — a setuid helper binary for hardened hosts (not yet shipped).
+  The tightest surface: no general escalator on the daemon user at all.
+
+The policy is configurable via `COLIBRI_JAIL_PRIV_MODE` and is resolved once
+at daemon startup. The same policy applies to agents and MCP servers.
+
+**Why not the daemon as root**: the daemon spawns arbitrary subprocesses
+(potentially attacker-controlled, via the MCP registry or task intake).
+Running as unprivileged `colibri` limits the blast radius; the priv-mode
+helper grants only the specific operations needed (jail creation).
+
+→ [`COLIBRI-JAILED-AGENT-SPAWN-DESIGN.md`](../COLIBRI-JAILED-AGENT-SPAWN-DESIGN.md),
+[`crates/colibri-daemon/src/spawner.rs`](../../crates/colibri-daemon/src/spawner.rs)
+(`PrivMode`)
+
+### MCP servers are jailed by default (same threat model as agents)
+
+External MCP servers registered in the external MCP registry accept an optional
+`jail` field with the same shape as agent spawn configs. The MCP host applies
+the jail wrapper before spawning the server. Servers without a `jail` field
+run on the host (backward compatible).
+
+The MCP host's registry entry supports per-server jail configuration —
+different servers can run in different jails. This is a property of the
+registry, not a global daemon setting.
+
+**Why jailed by default**: external MCP servers are arbitrary third-party
+binaries — at least as untrusted as the agents Colibri already jails. The
+threat model is identical.
+
+→ [`COLIBRI-EXTERNAL-MCP-PROTOTYPE.md`](../COLIBRI-EXTERNAL-MCP-PROTOTYPE.md),
+[`crates/colibri-mcp/src/external.rs`](../../crates/colibri-mcp/src/external.rs)
+
+## See also
+
+- [mother-hive](./mother-hive.md) — the SSH forced-command boundary (a different confinement model)
+- [agent-harness](./agent-harness.md) — the spawner that jails agents

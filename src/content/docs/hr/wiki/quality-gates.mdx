@@ -1,0 +1,64 @@
+---
+type: Reference
+title: "Quality gates"
+description: "Colibri wiki page: Quality gates"
+tags: [quality]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "AGENTS.md"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Quality gates
+
+← [index](./index.md)
+
+## Decision
+
+A change is not "done" until the gate passes locally:
+
+```sh
+./scripts/ci-checks.sh   # cargo fmt --check, clippy -D warnings, cargo test, markdown gate, wiki-lint --strict
+```
+
+The pre-push hook (`scripts/pre-push`) runs this same gate on every `git push`
+to `main` — activate once per clone with `./scripts/install-hooks.sh`.
+The hook rejects the push if any gate fails; bypass only in emergencies with
+`--no-verify`.
+
+`.forgejo/workflows/ci.yml` encodes the same checks, but **no Forgejo Actions
+runner is registered**, so nothing enforces them server-side. Until a runner is
+active, the local gate + pre-push hook are the enforcement layer. Stated as
+mandatory in `AGENTS.md`.
+
+## Why this page exists
+
+A compile break (`pi_binary` undefined, from a half-finished rename) reached
+`main` because the gate was skipped _and_ unenforced. The same audit found both
+gates were effectively red on `main` at the time:
+
+- `clippy -D warnings` failed on a pre-existing lint → the Rust gate would have
+  failed for anyone who ran it.
+- the markdown gate failed on prettier-dirty docs.
+
+Both were brought green, so the gate is now actually runnable. The lesson: a
+gate nobody runs (and that's red anyway) is the root cause of drift reaching
+`main` — more than any individual naming slip.
+
+## Relationship to this wiki
+
+The [naming-decisions](./naming-decisions.md) ledger + `wiki-lint --strict` are
+the _semantic_ counterpart to `ci-checks.sh`: the compiler/clippy catch broken
+_code_, but not a doc that still describes the old design or a name that drifted.
+The wiki lint covers that gap. It is now part of the mandatory gate — a drift
+failure blocks the push, same as a clippy warning.
+
+## See also
+
+- [agent-harness](./agent-harness.md)
+- [naming-decisions](./naming-decisions.md)

@@ -1,0 +1,277 @@
+---
+type: Hive Pane
+title: "Hive Pane"
+description: "Glasspane for the hive — multi-node cost observability, A2A discovery, and a board the operator can read at a glance."
+tags: [hive, pane, glasspane, observability, cost]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-glasspane/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+← [index](./index.md)
+
+Hive Pane is the multi-node extension of the [glasspane](./glasspane.md) metaphor.
+Where glasspane watches local agent subprocesses through JSONL stdout, Hive Pane
+watches hive nodes through PostgreSQL rows — same operator mental model (pane =
+unit of observation), different scale (local agent vs remote host).
+
+## Decision
+
+One board, not many ad-hoc surfaces. The operator sees every hive node — its
+status, accumulated cost, task success rate, and hardware capabilities — in a
+single view. The data already exists ([mother-hive](./mother-hive.md) for node
+registry, [task-board](./task-board.md) for per-task cost). Hive Pane just
+queries and renders it.
+
+## Why this exists
+
+Without it, the operator answers "what is my hive doing?" by:
+
+- SSH'ing into osa → `psql mother_hive -c "SELECT * FROM hive_nodes"`
+- Cross-referencing task boards on each node
+- Adding up costs manually
+
+Hive Pane replaces all of that with one queryable surface that understands
+the hive topology.
+
+## What it shows
+
+```
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│ HIVE PANE                                       [0.12.0] [secured] [4 nodes]      │
+├──────────┬─────────┬────────┬──────────┬───────────┬────────────┬─────────────────┤
+│ Node     │ Type    │ Status │ Tasks    │ Cost      │ GPU        │ Local LLM       │
+├──────────┼─────────┼────────┼──────────┼───────────┼────────────┼─────────────────┤
+│ osa      │ mother  │ online │ 12 done  │ $0.42     │ none       │ —               │
+│ debby    │ disk    │ online │  8 done  │ $1.87     │ amd (iGPU) │ ollama: qwen2.5 │
+│ domedog  │ disk    │ online │  3 done  │ $0.03     │ none       │ —               │
+│ usb-n7   │ live-usb│ online │  0       │ $0.00     │ intel      │ llama.cpp: 7b   │
+└──────────┴─────────┴────────┴──────────┴───────────┴────────────┴─────────────────┘
+```
+
+Each row is a pane — a live query against `hive_nodes` joined with aggregated
+task costs. The columns are:
+
+- **Status**: `online` if `last_seen` is within the heartbeat window, `offline` otherwise
+- **Tasks**: count of completed tasks (further split by success/failure on drill-down)
+- **Cost**: sum of `task_cost.cost` for this node, lifetime
+- **GPU**: derived from `capabilities` (the `derive_capabilities()` trigger on `hive_nodes`)
+- **Local LLM**: which models are available via ollama/llama.cpp on this node — `—` if cloud-only
+
+Clicking a node drills into its task history, cost breakdown (input/output/cache
+tokens), and hardware profile.
+
+## Relationship to existing surfaces
+
+### Glasspane
+
+Glasspane watches local agent subprocesses → agent state machine (Idle → Working
+→ Done). Hive Pane watches hive nodes → node state (online/offline) + aggregated
+agent costs. Same supervision loop, different unit of observation.
+
+A glasspane pane is ephemeral (dies with the agent). A Hive Pane row is durable
+(`hive_nodes` persists across reboots).
+
+→ [glasspane](./glasspane.md)
+
+### Hive routing
+
+[hive-routing](./hive-routing.md) defines the engine underneath the board:
+node identity (`machine_id`), local LLM capability probes, cost-aware task
+routing, and the implementation strategy. Hive Pane is the presentation layer;
+hive-routing is the scheduling layer.
+
+### Mother hive
+
+Mother hive is the data layer: PostgreSQL `hive_nodes` table with
+`derive_capabilities()` trigger. Hive Pane is the presentation layer: it queries
+that table and renders it.
+
+→ [mother-hive](./mother-hive.md)
+
+### Task board + cost tracking
+
+The daemon's heartbeat captures per-task cost into the local SQLite store. For
+the hive view, this data needs to flow to the mother. Two paths:
+
+1. **Bridge cost sync** (current): agents on remote nodes connect to osa's daemon
+   via the [control-plane bridge](../guide/architecture/control-plane-bridge/).
+   The board daemon sees their exit events and captures cost. This works today
+   for cross-host agents but requires the bridge to stay up.
+
+2. **A2A push** (planned, see below): nodes push cost data to mother as
+   structured A2A message parts. Decouples cost reporting from the bridge.
+
+→ [task-board](./task-board.md)
+→ [contracts](./contracts.md) (TaskCostSummary schema)
+
+## A2A integration (planned)
+
+> 📋 **Complexity audit:** [a2a-complexity-audit](./a2a-complexity-audit.md) —
+> A2A doesn't reduce Colibri's code complexity today (6 protocols → 6 protocols,
+> ~0 net lines). It pays off at 10+ nodes or when third-party tools ship A2A
+> support. The Agent Card design below is a north star, not an implementation
+> priority for 0.12.
+
+Google's Agent-to-Agent protocol standardizes three things Colibri already does
+ad-hoc. Adopting it makes the hive discoverable and interoperable beyond our own
+tooling.
+
+### Agent Card — standardized discovery
+
+Today a USB node discovers mother via a hardcoded SSH entry in
+the external MCP registry. With A2A, mother publishes an Agent Card at a well-known
+URL:
+
+```
+GET https://mother.clawdie.si/.well-known/agent.json
+```
+
+```json
+{
+  "name": "clawdie-mother",
+  "description": "Clawdie hive mother node — node registry, build queue, cost board",
+  "url": "https://mother.clawdie.si/a2a",
+  "version": "0.12.0",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false
+  },
+  "skills": [
+    {
+      "id": "node_register",
+      "name": "Register Node",
+      "description": "Register a hive node with hardware profile",
+      "inputSchema": { "type": "object", "properties": { "machine_id": {}, "hostname": {}, "hw_profile": {} } }
+    },
+    {
+      "id": "build_colibri",
+      "name": "Build Colibri",
+      "description": "Build a colibri crate from an allowed git branch"
+    }
+  ],
+  "costTracking": {
+    "supported": true,
+    "schema": "clawdie.task-cost.v1",
+    "aggregation": "per-node, per-task, per-model"
+  }
+}
+```
+
+USB nodes (and any A2A-compatible client) discover mother's capabilities without
+manual configuration. The Agent Card is versioned and lintable — same discipline
+as the wiki.
+
+### Task exchange — standardized lifecycle
+
+A2A tasks map directly to Colibri's task board:
+
+| A2A state   | Colibri equivalent |
+| ----------- | ------------------ |
+| `submitted` | `Pending`          |
+| `working`   | `Started`          |
+| `completed` | `Done`             |
+| `failed`    | `Error`            |
+| `canceled`  | (not yet modeled)  |
+
+Mother pushes a `node_register` task to a new USB node; the node executes it and
+returns the result. The task carries cost data as a typed A2A part:
+
+```json
+{
+  "type": "data",
+  "mimeType": "application/json+cost",
+  "data": {
+    "schema": "clawdie.task-cost.v1",
+    "input_tokens": 150,
+    "output_tokens": 80,
+    "cost": 0.0042
+  }
+}
+```
+
+### What A2A adds over the current MCP bridge
+
+| Concern            | Current (MCP + SSH)                | A2A                              |
+| ------------------ | ---------------------------------- | -------------------------------- |
+| Discovery          | Manual external MCP registry entry | Well-known Agent Card URL        |
+| Interop            | Colibri-only                       | Any A2A client                   |
+| Cost data          | Embedded in task completion        | Typed `application/json+cost`    |
+| Push notifications | Polling (heartbeat)                | Optional webhook/push            |
+| Versioning         | Ad-hoc                             | Agent Card version + schema pins |
+
+A2A is not a replacement for the MCP bridge — it's the next layer. The MCP
+bridge handles local daemon commands (status, snapshot, spawn). A2A handles
+cross-node task exchange and discovery. They coexist.
+
+## Data flow
+
+```
+USB node boots
+  │
+  ├─ 1. Tailscale connects
+  │
+  ├─ 2. A2A: GET mother/.well-known/agent.json
+  │      Discovers capabilities, registers interest
+  │
+  ├─ 3. A2A task: mother → USB: node_register(hw_profile)
+  │      USB executes, returns cost + capabilities
+  │
+  ├─ 4. Mother stores in hive_nodes + task_cost
+  │
+  └─ 5. Hive Pane queries PostgreSQL, renders row
+```
+
+For nodes that don't speak A2A yet (current USB image), the existing MCP + SSH
+path continues to work. The board queries `hive_nodes` regardless of how the
+data got there.
+
+## Schema (mother PostgreSQL)
+
+The `hive_nodes` table already exists ([mother-hive](./mother-hive.md)). Hive
+Pane adds a lightweight view for the board:
+
+```sql
+CREATE VIEW hive_pane AS
+SELECT
+    n.machine_id,
+    n.hostname,
+    n.node_type,
+    n.status,
+    n.last_seen,
+    n.capabilities,
+    COUNT(t.id) FILTER (WHERE t.status = 'Done')   AS tasks_done,
+    COUNT(t.id) FILTER (WHERE t.status = 'Error')  AS tasks_failed,
+    COALESCE(SUM(t.cost), 0.0)                     AS total_cost
+FROM hive_nodes n
+LEFT JOIN tasks t ON t.node_machine_id = n.machine_id
+GROUP BY n.machine_id, n.hostname, n.node_type, n.status, n.last_seen, n.capabilities;
+```
+
+The `tasks` table on mother is a projected subset of each node's local task
+board — hostname, status, cost columns. The sync mechanism (bridge cost capture
+or A2A push) is responsible for keeping it current.
+
+## Non-goals
+
+- **Not a replacement for glasspane TUI.** Glasspane watches live agent
+  subprocesses (millisecond latency). Hive Pane watches aggregate node state
+  (minute latency). Two different tools.
+- **Not a Grafana clone.** No time-series plots, no alerting rules. The operator
+  can pipe the data anywhere; Hive Pane is the default read-only view.
+- **Not a write surface.** Node registration and task creation happen through
+  the existing MCP/A2A paths. The board reads only.
+
+## References
+
+- [glasspane](./glasspane.md) — local agent observation model
+- [mother-hive](./mother-hive.md) — node registry schema and SSH forced-command pattern
+- [task-board](./task-board.md) — capability scoring and cost tracking
+- [contracts](./contracts.md) — TaskCostSummary schema v1
+- [external-mcp](./external-mcp.md) — current MCP bridge (coexists with A2A)

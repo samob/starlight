@@ -1,0 +1,452 @@
+---
+type: Architecture Decision
+title: "TS Legacy — Retired clawdie-ai TypeScript Codebase"
+description: "Colibri wiki page: TS Legacy — Retired clawdie-ai TypeScript Codebase"
+tags: []
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "docs/MULTI-AGENT-HOST.md"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# TS Legacy — Retired clawdie-ai TypeScript Codebase
+
+**Repo:** `~/clawdie-ai` (OSA host, read-only)  
+**Version:** 0.10.0 (last commit 15.jun.2026)  
+**Status:** Superseded by colibri (Rust) + hermes-bsd (Python), PR #146  
+**Wiki compiled:** 28.jun.2026
+
+A compressed, grep-friendly reference for the retired TypeScript control plane.
+What it did, what survived, what was dropped, and where everything lives now.
+
+---
+
+## 1. Architecture Sketch
+
+The clawdie-ai TS codebase was a **Node.js ≥24 monolith on FreeBSD/ZFS**,
+running as a single process (`src/index.ts`, 1,410 lines) that bundled
+Telegram intake (grammy bot), an HTTP REST API (port 3100), a multi-role
+control plane, a watchdog, and a `hostd` daemon proxy for privileged
+operations (Bastille, ZFS, PF) via Unix socket.
+
+Messages arrived through the `channels/` layer (Telegram via grammy +
+`Channel` registry interface) and flowed into `router` → `controlplane`.
+The control plane maintained a **four-role agent system** (Orchestrator
+80%, Sysadmin 10%, DB Admin 5%, Git Admin 5%), each with per-role identity
+files, budget caps, and heartbeat schedules. The `agent-runner` spawned
+`pi` subprocesses for specialist tasks, assembling prompts from identity
+files, a compact skill index (~200 tokens), a runtime manifest (repo/
+skills/capabilities metadata), and live system state.
+
+Data lived in a **split-brain PostgreSQL 18 instance** with three databases
+per agent (`{agent}_ops`, `{agent}_skills` with pgvector embeddings,
+`{agent}_memory` with pgvector semantic search). Bastille jails (db, cms,
+git, optional llama-cpp) provided service isolation via `infra/jails.yaml`.
+
+**How it differed from the Rust stack:** The TS monolith did everything in
+one Node process — message routing, scheduling, agent spawning, API serving
+were tightly coupled. The Rust replacement decomposes this into **zot**
+(agent harness), **colibri-daemon** (scheduler), and **colibri-mcp** (tool
+server). PostgreSQL → SQLite. Grammy bot → Hermes gateway. Jails managed by
+Bastille helpers → colibri-deploy. The monolith became three separate
+processes with MCP as the tool interface layer.
+
+---
+
+## 2. Feature Inventory
+
+Summary: 164 features → colibri (68%), 27 → hermes-bsd (11%), 39 dropped
+(16%), remainder merged between both.
+
+### Core Orchestration
+
+| Feature                    | TS location                   | Status       | Where it lives now                       |
+| -------------------------- | ----------------------------- | ------------ | ---------------------------------------- |
+| Message loop orchestrator  | `src/index.ts`                | → colibri    | `colibri-daemon` (scheduler/intake loop) |
+| Self-healing control plane | `src/controlplane.ts`         | → colibri    | `colibri-glasspane` (supervisor)         |
+| Watchdog (memory throttle) | `src/watchdog.ts`             | → colibri    | `colibri-daemon` (resource guarding)     |
+| Task scheduler             | `src/task-scheduler.ts`       | → colibri    | `colibri-daemon` (scheduled runs)        |
+| Per-group message queue    | `src/group-queue.ts`          | → colibri    | `colibri-daemon` (concurrency)           |
+| Jailed agent spawn         | `src/agent-runner.ts`         | → colibri    | `colibri-runtime` + `colibri-client`     |
+| Session compaction         | `src/session-compaction.ts`   | → hermes-bsd | `gateway/session.py`                     |
+| Explanation grounder       | `src/explanation-grounder.ts` | dropped      | colibri uses structured output           |
+
+### Host Daemon (Privileged Ops)
+
+| Feature                   | TS location                        | Status    | Where                              |
+| ------------------------- | ---------------------------------- | --------- | ---------------------------------- |
+| Host daemon (root socket) | `src/hostd/daemon.ts`              | → colibri | `colibri-daemon`                   |
+| Host daemon client        | `src/hostd/client.ts`              | → colibri | `colibri-client` (Unix socket IPC) |
+| Zod-validated op handlers | `src/hostd/privileged-commands.ts` | → colibri | `colibri-daemon`                   |
+| Host daemon auth          | `src/hostd/auth.ts`                | → colibri | `colibri-client` (bearer token)    |
+
+### Channels / Messaging
+
+| Feature                   | TS location                | Status       | Where                                                                                                         |
+| ------------------------- | -------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------- |
+| Telegram bot (Grammy)     | `src/channels/telegram.ts` | → split      | zot built-in bridge (`zot telegram-bot`) **or** hermes-bsd gateway (`plugins/platforms/telegram/`) — see note |
+| Channel registry          | `src/channels/registry.ts` | → hermes-bsd | `gateway/`                                                                                                    |
+| Telegram command registry | `src/telegram-commands.ts` | → hermes-bsd | `gateway/slash_commands.py`                                                                                   |
+| Voice transcription (STT) | `src/transcription.ts`     | dropped      | handled upstream by platform                                                                                  |
+| Outbound images           | `src/outbound-images.ts`   | → hermes-bsd | `tools/vision_tools.py`                                                                                       |
+
+> **Telegram, post-split — three consumers, not one.** The single grammy bot
+> became **three distinct paths**, which is a common source of "who owns the
+> token?" confusion:
+>
+> 1. **zot** ships its own conversational Telegram bridge — `zot telegram-bot
+setup` (paste a BotFather token, stored in zot's own credential store, _not_
+>    an env var), plus `/telegram` (`/tg`) inside the TUI. Inbound + outbound.
+> 2. **hermes-bsd gateway** runs the other conversational bot —
+>    `plugins/platforms/telegram/adapter.py`, token from env `TELEGRAM_BOT_TOKEN`
+>    (`gateway/config.py`). Inbound + outbound.
+> 3. **colibri-daemon** is **alerts-only** — it _sends_ edge-triggered
+>    terminal-capture alerts (`notify_telegram`, `crates/colibri-daemon/src/daemon.rs`)
+>    and never polls. Its `COLIBRI_TELEGRAM_BOT_TOKEN` is a push channel, **not a
+>    bot.**
+>
+> Only one `getUpdates` poller may own a given bot token at a time; running the
+> zot bridge and the hermes gateway against the **same** token yields Telegram
+> `409 Conflict` and a silently deaf bot. Keep the conversational bot on exactly
+> one of zot **or** hermes; colibri's alert token is independent by name.
+
+### Database (PostgreSQL → SQLite)
+
+| Feature                    | TS location                  | Status    | Where                                |
+| -------------------------- | ---------------------------- | --------- | ------------------------------------ |
+| PostgreSQL ops DB          | `src/db.ts`                  | → colibri | `colibri-ledger` (SQLite)            |
+| PostgreSQL memory (vector) | `src/memory-pg.ts`           | → colibri | `colibri-ledger` (FTS5 + embeddings) |
+| Skills in PostgreSQL       | `src/skills-pg.ts`           | → colibri | `colibri-skills` + `colibri-ledger`  |
+| Skills discovery           | `src/skills-discovery.ts`    | → colibri | `colibri-skills`                     |
+| DB identifiers             | `src/db-identifiers.ts`      | → colibri | `colibri-ledger`                     |
+| Control plane DB           | `src/controlplane-db.ts`     | → colibri | `colibri-ledger`                     |
+| Migrations runner          | `src/migration-runner.ts`    | → colibri | `colibri-ledger` (SQL migrations)    |
+| Memory architecture (LMF)  | `src/memory-architecture.ts` | → colibri | `colibri-ledger` (memory fabric)     |
+
+### Jails + Deploy
+
+| Feature                      | TS location                 | Status    | Where                            |
+| ---------------------------- | --------------------------- | --------- | -------------------------------- |
+| Jail provisioning (setup)    | `setup/bastille-helpers.ts` | → colibri | `colibri-deploy`                 |
+| Jail YAML source of truth    | `infra/jails.yaml`          | → colibri | `colibri-deploy` (config model)  |
+| Jail runtime management      | `src/jail-runtime.ts`       | → colibri | `colibri-runtime`                |
+| 20-step install orchestrator | `setup/install.ts`          | → colibri | `colibri-deploy` (installers)    |
+| Browser jail setup           | `bootstrap/browser-jail/`   | → colibri | `colibri-deploy`                 |
+| CMS jail setup               | `bootstrap/cms/`            | → colibri | `colibri-deploy`                 |
+| justfile (60+ recipes)       | `justfile`                  | → colibri | `colibri-deploy` (Makefile.toml) |
+
+### Agent Tooling
+
+| Feature                   | TS location                        | Status       | Where                            |
+| ------------------------- | ---------------------------------- | ------------ | -------------------------------- |
+| Agent heartbeat           | `src/controlplane-heartbeat.ts`    | → colibri    | `colibri-daemon`                 |
+| Provider fallback logic   | `src/provider-fallback.ts`         | → hermes-bsd | provider routing                 |
+| Pi profile configuration  | `src/pi-profile.ts`                | → colibri    | `colibri-daemon` (agent config)  |
+| Pi custom provider config | `src/pi-custom-provider-config.ts` | → colibri    | `colibri-daemon`                 |
+| Runtime manifest          | `src/runtime-manifest.ts`          | → colibri    | `colibri-contracts`              |
+| System state snapshot     | `src/system-state.ts`              | → colibri    | `colibri-glasspane`              |
+| Agent capabilities check  | `src/agent-capabilities.ts`        | → colibri    | `colibri-daemon`                 |
+| Metrics (Prometheus)      | `src/metrics.ts`                   | → colibri    | `colibri-glasspane` (metrics)    |
+| Platform identity         | `src/platform-identity.ts`         | → colibri    | `colibri-contracts`              |
+| Authorization             | `src/auth.ts`                      | → colibri    | `colibri-client` (bearer tokens) |
+
+### ZFS / PF / System
+
+| Feature                 | TS location                        | Status       | Where                           |
+| ----------------------- | ---------------------------------- | ------------ | ------------------------------- |
+| ZFS operations          | `src/hostd/privileged-commands.ts` | → colibri    | `colibri-zfs`                   |
+| PF firewall operations  | `src/hostd/privileged-commands.ts` | → colibri    | `colibri-pf`                    |
+| Upstream git tracking   | `src/upstream/git.ts`              | → hermes-bsd | `hermes-bsd-upstream-sync`      |
+| Upstream classification | `src/upstream/classify.ts`         | → hermes-bsd | skill                           |
+| TMP mount audit         | `src/tmp-mount-audit.ts`           | dropped      | OS-level check, not in v1 scope |
+| Maintenance snapshots   | `src/maintenance-snapshots.ts`     | → colibri    | `colibri-zfs`                   |
+
+### Docs / CMS / i18n
+
+| Feature                   | TS location                  | Status    | Where                   |
+| ------------------------- | ---------------------------- | --------- | ----------------------- |
+| Astro CMS (Starlight)     | `bootstrap/cms/`             | → colibri | `docs/website/` (Astro) |
+| Multi-locale docs (EN/SL) | `docs/public/{en,sl}/`       | → colibri | `docs/` (EN/SL i18n)    |
+| Crowdin i18n pipeline     | `crowdin.yml` + scripts      | dropped   | No SaaS i18n in v1      |
+| Docs compile script       | `scripts/docs-compile.sh`    | → colibri | `scripts/build-docs.sh` |
+| Tenant site publish       | `src/tenant-site-publish.ts` | dropped   | Multi-tenant not in v1  |
+| Tenant site content       | `src/tenant-site-content.ts` | dropped   | —"—                     |
+| Tenant registry           | `src/tenant-registry.ts`     | dropped   | —"—                     |
+
+### Scripts (Operational)
+
+| Script                           | Purpose                      | Status                     |
+| -------------------------------- | ---------------------------- | -------------------------- |
+| `scripts/agent-*.ts` (4 files)   | Agent lifecycle ops          | → colibri (CLI commands)   |
+| `scripts/skill-*.ts` (5 files)   | Skill add/list/sync/validate | → colibri (colibri-skills) |
+| `scripts/backup.ts`              | Backup agent                 | → colibri (colibri-vault)  |
+| `scripts/gen-changelog.ts`       | CHANGELOG generation         | dropped                    |
+| `scripts/fetch-upstream.ts`      | Upstream sync                | → hermes-bsd               |
+| `scripts/dashboard.ts`           | Dashboard                    | → colibri (glasspane-tui)  |
+| `scripts/jail-*.ts` (2 files)    | Jail provision/status        | → colibri (colibri-deploy) |
+| `scripts/bhyve-evidence.sh`      | Bhyve VM evidence            | dropped                    |
+| `scripts/heartbeat.sh`           | Heartbeat cron               | → colibri (colibri-daemon) |
+| `scripts/hostd-cli.ts`           | Host daemon CLI              | → colibri (colibri-client) |
+| `scripts/validate-all-skills.ts` | Skill validation             | → colibri (colibri-skills) |
+| `scripts/crowdin-sync.sh`        | i18n sync                    | dropped                    |
+
+### Dropped Features (with rationale)
+
+| Feature                      | TS location                  | Why dropped                            |
+| ---------------------------- | ---------------------------- | -------------------------------------- |
+| Stripe payments              | `src/stripe-config.ts`       | SaaS monetization not in colibri v1    |
+| Strapi CMS                   | `bootstrap/strapi-cms/`      | Replaced by Astro static site          |
+| Grafana monitoring           | `bootstrap/grafana/`         | Replaced by colibri-glasspane-tui      |
+| Crowdin i18n pipeline        | i18n scripts                 | No SaaS i18n in v1                     |
+| Multi-tenant registry        | `src/tenant-registry.ts`     | Single-tenant by design                |
+| Tenant site publishing       | `src/tenant-site-publish.ts` | SaaS feature, out of scope             |
+| Bhyve VM GUI                 | `scripts/bhyve-evidence.sh`  | Not in colibri scope                   |
+| Voice transcription          | `src/transcription.ts`       | Handled upstream by messaging platform |
+| OAuth flows                  | `scripts/oauth-*.ts`         | No OAuth in colibri v1                 |
+| Email notifications          | `scripts/email-*.ts`         | Not in v1                              |
+| `CLAWDIE-ISO.md` (28 KB)     | `CLAWDIE-ISO.md`             | Superseded by clawdie-iso repo         |
+| `GIT_ADMIN_AGENT.md` (10 KB) | `GIT_ADMIN_AGENT.md`         | Role docs, not code                    |
+| `SYSADMIN_AGENT.md` (8 KB)   | `SYSADMIN_AGENT.md`          | Role docs, not code                    |
+| `DB_ADMIN_AGENT.md` (8 KB)   | `DB_ADMIN_AGENT.md`          | Role docs, not code                    |
+
+---
+
+## 3. Duplication Watch
+
+| Duplicate                      | TS location                               | Rust/Go/Python location                       | Resolved?                                          |
+| ------------------------------ | ----------------------------------------- | --------------------------------------------- | -------------------------------------------------- |
+| Jail provisioning              | `setup/bastille-helpers.ts`               | `colibri-deploy` (Rust)                       | ✅ colibri is canonical                            |
+| Skill loading/validation       | `scripts/skill-*.ts`                      | `colibri-skills` (Rust)                       | ✅ colibri is canonical                            |
+| Agent lifecycle (spawn/kill)   | `src/agent-runner.ts`                     | `colibri-daemon` + `colibri-client` (Rust)    | ✅ colibri is canonical                            |
+| Telegram bot                   | `src/channels/telegram.ts`                | hermes-bsd `gateway/platforms/telegram.py`    | ✅ hermes-bsd is canonical                         |
+| Provider credential model      | `src/config.ts` (1,036 lines env parsing) | `provider.env` (colibri) + Hermes config.yaml | ✅ split: colibri (daemon), hermes-bsd (agent)     |
+| ZFS snapshot management        | `src/hostd/privileged-commands.ts`        | `colibri-zfs` (Rust)                          | ✅ colibri is canonical                            |
+| PF firewall rules              | `src/hostd/privileged-commands.ts`        | `colibri-pf` (Rust)                           | ✅ colibri is canonical                            |
+| Skills engine                  | `skills-engine/` (TS)                     | `colibri-skills` (Rust) + hermes-bsd skills/  | ✅ colibri owns ingestion; hermes-bsd owns runtime |
+| Docs site (Astro)              | `bootstrap/cms/`                          | `docs/website/` (colibri)                     | ✅ colibri is canonical                            |
+| Upstream merge                 | `src/upstream/`                           | hermes-bsd `hermes-bsd-upstream-sync` skill   | ✅ hermes-bsd is canonical                         |
+| Memory/pgvector                | `src/memory-pg.ts`                        | `colibri-ledger` (SQLite FTS5)                | ✅ colibri is canonical; PostgreSQL dropped        |
+| Agent budget model             | `src/config.ts`                           | `colibri-daemon` cost modes                   | ✅ colibri is canonical                            |
+| `package.json` vs `Cargo.toml` | npm deps (18 total)                       | 15 Rust crates                                | ✅ Different ecosystems, different manifests       |
+| Dashboard/TUI                  | `scripts/dashboard.ts`                    | `colibri-glasspane-tui`                       | ✅ colibri is canonical                            |
+| Hostd CLI                      | `scripts/hostd-cli.ts`                    | `colibri-client` (CLI subcommands)            | ✅ colibri is canonical                            |
+
+---
+
+## 4. Key Source Extracts
+
+### 4.1 Config surface — env var bootstrap (`src/config.ts:42-90`)
+
+```typescript
+const envConfig = readEnvFile([
+  'TENANT_ID', 'AGENT_NAME', 'TENANT_DISPLAY_NAME', 'AGENT_GENDER',
+  'ASSISTANT_NAME', 'AGENT_DOMAIN', 'AGENT_INTERNAL_DOMAIN',
+  'CODE_HOSTING_MODE', 'REMOTE_GIT_URL', 'GIT_LOCAL_URL',
+  'FEATURE_GIT', 'FEATURE_GITEA', 'FEATURE_OLLAMA',
+  'FEATURE_LLAMA_CPP', 'FEATURE_OLLAMA_HPP',
+  'TELEGRAM_BOT_TOKEN', 'TELEGRAM_ADMIN_IDS',
+  'OPENAI_API_KEY', 'OPENROUTER_API_KEY', 'GROQ_API_KEY',
+  'ZAI_API_KEY', 'DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL',
+  'ANTHROPIC_API_KEY', 'GOOGLE_API_KEY',
+  'STRIPE_SECRET_KEY',
+  'AGENT_ENGINE', 'PI_TUI_PROFILE', 'PI_TUI_BIN',
+  'PI_TUI_PROVIDER', 'PI_TUI_MODEL',
+  'HEARTBEAT_PROVIDER', 'HEARTBEAT_MODEL',
+  // ... 60+ more env vars
+]);
+```
+
+~100 env vars in a single `.env` file. Credentials, feature flags, locale
+settings, DB URLs, jail IPs all in one namespace. Colibri splits this into
+`provider.env` (secrets only, root-owned 0600) and build.cfg / config.yaml
+(behavioral settings).
+
+### 4.2 Agent runner — spawn pi subprocess (`src/agent-runner.ts`)
+
+```typescript
+export async function runJailAgent(
+  groupJid: string, jailRunId: string, task: Task,
+  mode: 'foreground' | 'background' = 'foreground'
+): Promise<AgentOutput> {
+  const jailHome = resolveJailHome(jailRunId);
+  const prompt = assemblePrompt(task, jailHome);  // identity + skills + state
+  const args = [
+    '--print', '--model', task.model,
+    '--provider', task.provider,
+    '--no-skills',  // skills pre-loaded in prompt, not re-scanned
+  ];
+  const proc = spawn('pi', args, {
+    cwd: jailHome,
+    env: { HOME: jailHome, ...task.env },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  // ... capture stdout, log stderr, timeout handling
+}
+```
+
+The TS control plane spawned `pi --print` as a subprocess, pre-loading
+identity + skills + system state into the prompt text. Zot now handles this
+natively, and colibri-daemon spawns zot via `colibri-client` with RPC stdin.
+
+### 4.3 Watchdog — concurrency + memory guard (`src/watchdog.ts:36-55`)
+
+```typescript
+function buildPresets(): Record<RunMode, ModePreset> {
+  return {
+    auto: {
+      maxConcurrentJails: MAX_CONCURRENT_JAILS,
+      idleTimeoutMs: IDLE_TIMEOUT,
+      jailTimeoutMs: JAIL_TIMEOUT,
+      pollIntervalMs: POLL_INTERVAL,
+      memoryThresholdMB: 512,
+    },
+    slow: {
+      maxConcurrentJails: Math.max(1, Math.floor(MAX_CONCURRENT_JAILS / 2)),
+      idleTimeoutMs: 5 * 60_000,
+      jailTimeoutMs: 30 * 60_000,
+      pollIntervalMs: 10_000,
+      memoryThresholdMB: 256,
+    },
+    // ... fast, permanent modes
+  };
+}
+```
+
+Four run modes with different concurrency/memory/timeout presets. Colibri
+replaces this with a single cost-mode system (fast/smart/max) in
+`colibri-daemon` that auto-escalates based on context window pressure.
+
+### 4.4 Task scheduler — recurring job engine (`src/task-scheduler.ts:1-50`)
+
+```typescript
+export interface SchedulerDependencies {
+  registeredGroups: () => Record<string, RegisteredGroup>;
+  getSessions: () => Record<string, string>;
+  queue: GroupQueue;
+  onProcess: (groupJid: string, proc: ChildProcess, jailRunId: string,
+              groupFolder: string) => void;
+  sendMessage: (jid: string, text: string) => Promise<void>;
+}
+
+export interface MorningReportContextDeps {
+  collectTls?: () => Promise<DoctorCheckResult>;
+  // ...
+}
+```
+
+The scheduler was a dependency-injected loop with cron-expression parser,
+group-scoped queues, and a morning-report system. Colibri-daemon reimplements
+this with the `scheduler` module — same concept (cron matching + agent
+dispatch + deliver), but in Rust with SQLite-backed task storage.
+
+### 4.5 Telegram bridge — Grammy bot intake (`src/channels/telegram.ts` extract)
+
+The Grammy bot handled message intake, admin commands, and response routing
+in one 2,880-line file (`src/telegram-commands.ts`). Hermes-bsd splits this
+into `gateway/platforms/telegram.py` (message rx/tx) and
+`gateway/slash_commands.py` (command dispatch), with the agent runner in
+`colibri-client`.
+
+### 4.6 PostgreSQL → SQLite migration
+
+The TS codebase used **three PostgreSQL databases per agent** with pgvector
+for semantic search. Key tables: `tasks`, `agents`, `activity_log`,
+`skill_chunks` (with 1536-dim pgvector embeddings), `memories` (pgvector).
+Colibri replaced all of this with a single SQLite file per database
+(`colibri-ledger`) using FTS5 for text search. The pgvector dependency
+(200+ MB PostgreSQL install) was a major motivation for the port.
+
+### 4.7 Skills engine — compact index injection
+
+```typescript
+// Skills were loaded as a compact index (~200 tokens) instead of full content
+// (~15,000+ tokens). Full SKILL.md available on-demand via skills_search tool.
+// From src/runtime-manifest.ts and skills-discovery.ts:
+// "What repo am I running from? What branch? What skills exist?
+//  What specialists can I coordinate?"
+const manifest = `<runtime-manifest>
+  repo: ${repoName} @ ${branch}
+  skills: ${skillSummaries.join(', ')}
+  specialists: ${Object.keys(roles).join(', ')}
+</runtime-manifest>`;
+```
+
+This pattern survived directly into colibri-skills which builds a similar
+compact index from `colibri-ledger`'s skill catalog.
+
+---
+
+## 5. Stats
+
+| Metric                           | Value                                                        |
+| -------------------------------- | ------------------------------------------------------------ |
+| Total TS/TSX source lines        | 62,188                                                       |
+| Shell script lines (scripts/)    | 3,285                                                        |
+| Markdown docs lines (root .md)   | 5,060 (AGENTS.md + README + CHANGELOG + ARCHITECTURE + misc) |
+| JSON config files                | 17 (excluding package-lock.json)                             |
+| npm dependencies                 | 10 runtime + 8 dev = 18 total                                |
+| Git commits                      | 1,681                                                        |
+| First commit                     | 31.jan.2026                                                  |
+| Last commit                      | 23.jun.2026                                                  |
+| Active development span          | ~4 months                                                    |
+| node_modules size                | (not present — cleaned)                                      |
+| .git history size                | 181 MB                                                       |
+| Source code size (src + scripts) | 3.0 MB (2.3M src/ + 672K scripts/)                           |
+| Total repo on disk               | 232 MB (without node_modules)                                |
+
+---
+
+## 6. Node Version Lock
+
+| Property          | Value                                                                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Required Node     | ≥24 (`.nvmrc`: `24`, `package.json` engines: `>=24`)                                                                             |
+| TypeScript target | `ES2022`                                                                                                                         |
+| Module system     | `NodeNext` (ESM)                                                                                                                 |
+| Module resolution | `NodeNext`                                                                                                                       |
+| Native addons     | None (pure JS/TS; hostd uses child_process for privileged ops)                                                                   |
+| Runtime deps      | `grammy` (Telegram), `pg` (PostgreSQL), `zod` (validation), `express` (API), `cron-parser` (scheduling), `prom-client` (metrics) |
+| Dev deps          | `vitest`, `typescript`, `prettier`, `tsx`                                                                                        |
+| Build             | `tsc` → `dist/`                                                                                                                  |
+
+---
+
+## 7. Disk Reclamation
+
+Read-only analysis — nothing deleted.
+
+| Component                    | Size        | Reclaimable?                                     |
+| ---------------------------- | ----------- | ------------------------------------------------ |
+| `node_modules/`              | — (cleaned) | N/A — already removed                            |
+| `dist/`                      | —           | N/A — already removed                            |
+| `.git/`                      | 181 MB      | ⚠️ Archive separately — 1,681 commits of history |
+| Source (`src/` + `scripts/`) | 3.0 MB      | ❌ Already captured in this wiki                 |
+| Docs (`docs/` + `doc/`)      | 12 MB       | ❌ Already migrated to colibri `docs/`           |
+
+**Totals:**
+
+| Scenario                             | Reclaimed  |
+| ------------------------------------ | ---------- |
+| Remove everything                    | **232 MB** |
+| Keep `.git/` as archive, remove rest | **51 MB**  |
+
+The source code essence (everything needed to understand the architecture)
+is captured in this wiki page. The `.git/` history (180 MB) could be archived
+as a tarball on the ZFS pool. The `node_modules/` (189 MB) is reproducible
+from `package.json`.
+
+---
+
+## See Also
+
+- `doc/CONTROLPLANE-ARCHITECTURE.md` — control plane design (in clawdie-ai)
+- `doc/CONTROLPLANE-AGENT-ROLES.md` — four-role agent system
+- `doc/MULTI-PROVIDER-ARCHITECTURE.md` — LLM provider routing
+- `CHANGELOG.md` — full v0.1.0 → v0.10.0 release history
+- `ARCHITECTURE.md` — high-level layout (source of §1 above)
+- `AGENTS.md` — 45 KB of agent development conventions (some still relevant)

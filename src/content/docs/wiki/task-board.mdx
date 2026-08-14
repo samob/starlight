@@ -1,0 +1,113 @@
+---
+type: Task Board Design
+title: "Task board + scheduler"
+description: "Capability match scoring, cron scheduling, intake drain, SQLite backing."
+tags: [task]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-ledger/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Task board + scheduler
+
+← [index](./index.md)
+
+## What this is
+
+Colibri's task board holds operator-submitted work items, and the scheduler
+assigns them to the best-fit agent on each tick. Tasks flow in via the
+daemon's Unix socket (`create-task`, `intake-task`) and are drained by the
+scheduler loop running inside the daemon every ~30 seconds.
+
+## Decisions
+
+### Capability match scoring (best-fit, not first-fit)
+
+When the scheduler picks an agent for a task, it scores every available agent
+against the task's **required capabilities** using a simple intersection count:
+`|required ∩ agent_caps| / |required|`. The agent with the highest score wins;
+ties are broken by agent name (deterministic, so repeated runs don't thrash).
+
+A task with `["freebsd", "zfs"]` will match an agent with both capabilities
+over one with only `freebsd`. A task with no required capabilities matches
+any agent. Offline agents and agents whose capabilities don't intersect at all
+are skipped.
+
+**Why not round-robin or FIFO**: capability-based matching means the right agent
+gets the right work without operator hand-assignment. The scoring is trivial
+(set intersection) and transparent — no machine learning, no weights to tune.
+
+→ [`crates/colibri-daemon/src/scheduler.rs`](../../crates/colibri-daemon/src/scheduler.rs)
+(`capability_match_score`, `pick_agent`)
+
+### Three schedule types (cron, interval, once)
+
+| Type     | Behavior                                                          |
+| -------- | ----------------------------------------------------------------- |
+| Cron     | Fires at specific wall-clock times (e.g. `0 0 * * *` = midnight). |
+| Interval | Fires after a fixed duration since last run (e.g. 3600s).         |
+| Once     | Fires exactly once, at the specified future time.                 |
+
+Cron patterns are simple 5-field expressions (minute, hour, day, month,
+weekday) with wildcards — no second granularity, no `/step` syntax. The
+matching uses prefix comparison: a cron pattern matches if each field of the
+current time begins with the pattern string, so `0` matches `00`, `1` matches
+`10-19`, etc. This is intentionally simple — cron is a convenience for periodic
+housekeeping, not a general-purpose job engine.
+
+**Why not use a real cron library**: the scheduler's job is dispatching tasks to
+agents, not calendar management. The simple prefix-match cron covers 90% of use
+cases (daily builds, hourly reports) without pulling in a parsing dependency.
+
+→ [`crates/colibri-daemon/src/scheduler.rs`](../../crates/colibri-daemon/src/scheduler.rs)
+(`should_fire`)
+
+### Intake drain + re-queue (queue → task board → agent)
+
+The `intake-task` socket command creates a task row in the store and pushes a
+`TaskRequest` onto the scheduler's `intake_queue`. On each scheduler tick
+(~30s), the loop drains the intake queue and tries to claim each task against
+a capable, present agent. If no agent matches, the request is **re-queued**
+back onto `intake_queue` for the next tick — it is never silently dropped
+(#352). A claim that loses the race (task already handled by another tick) is
+dropped to prevent spinning.
+
+This decouples submission from execution: the operator submits at any time,
+and the scheduler retries until a matching agent is available. Presence is
+checked via TTL (#349) — an agent that hasn't heartbeated recently is skipped
+even if its capabilities match.
+
+**Why re-queue, not drop**: before #352, an undispatchable request was silently
+discarded — the task stayed `queued` in the store but was never re-routed.
+Now the feedback loop ensures every valid task eventually finds an agent.
+
+→ [`crates/colibri-daemon/src/scheduler.rs`](../../crates/colibri-daemon/src/scheduler.rs)
+(`Scheduler`, `tick`, `intake_queue`),
+[`crates/colibri-daemon/src/socket.rs`](../../crates/colibri-daemon/src/socket.rs)
+(`cmd_intake_task`)
+
+### SQLite backing (embedded, not a service)
+
+The task board stores tasks, agent registrations, tenant info, and the skills
+catalog in an embedded SQLite database at `/var/db/colibri/colibri.sqlite`. No
+separate database process — the daemon opens the file directly.
+
+**Why SQLite, not PostgreSQL**: the daemon runs on the operator USB and on
+deployed hosts. A full PostgreSQL service is heavyweight for a single daemon's
+coordination state. SQLite is zero-config, zero-admin, and survives daemon
+restarts without a separate lifecycle. The mother node uses PostgreSQL for the
+hive registry because it's multi-tenant; the local daemon is single-tenant.
+
+→ [`crates/colibri-ledger/src/lib.rs`](../../crates/colibri-ledger/src/lib.rs)
+
+## See also
+
+- [mother-hive](./mother-hive.md) — the mother node's PostgreSQL-based hive registry
+- [cost-model](./cost-model.md) — cost tracking per session
+- [agent-harness](./agent-harness.md) — autospawn

@@ -1,0 +1,317 @@
+---
+type: Reference
+title: "Pull Requests"
+description: "Colibri wiki page: Pull Requests"
+tags: [pull]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "AGENTS.md"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Pull Requests
+
+A **pull request (PR)** is how we propose and review changes to the codebase. It's the primary way we collaborate on code - we branch off, make changes, and request those changes be pulled into the main codebase.
+
+## What is a PR?
+
+A PR is a proposal to change code. It shows:
+
+- **What changed** - the diff of modified files
+- **Why it changed** - commit messages explaining the reasoning
+- **How it works** - tests proving it works correctly
+
+Every code change goes through a PR before being merged to main. Even small fixes.
+
+## Our Workflow
+
+### 1. Create a Branch
+
+```bash
+# From main branch
+git checkout main
+git pull origin main
+git checkout -b descriptive-branch-name
+
+# Example branch names:
+# - fix/format-drift
+# - feat/eval-harness
+# - docs/model-selection
+# - refactor/remove-legacy
+```
+
+### 2. Make Changes
+
+```bash
+# Edit files, run tests
+cargo fmt
+cargo clippy
+cargo test --workspace
+
+# Commit with clear messages
+git add -A
+git commit -m "fix: resolve format drift in daemon.rs
+
+Ran cargo fmt to fix method chain formatting.
+No functional changes - just formatting compliance.
+
+Sam & Claude"
+```
+
+### 3. Push Branch
+
+```bash
+git push -u origin descriptive-branch-name
+```
+
+### 4. Create PR
+
+Go to Forgejo web UI or use the link from the push output:
+
+```
+https://code.smilepowered.org/clawdie/colibri/compare/main...descriptive-branch-name
+```
+
+Fill out the PR description:
+
+- **What**: What does this PR do?
+- **Why**: Why is this change needed?
+- **How**: How was it implemented?
+- **Testing**: What tests prove it works?
+
+### 5. Review
+
+A reviewer (agent or operator) checks the PR:
+
+- Checks that tests pass
+- Checks that formatting/clippy are clean
+- Reviews the code for correctness
+- May request changes
+
+### 6. Merge
+
+Once approved:
+
+- Squash merge to main (keeps history clean)
+- Or regular merge if commits tell a story worth preserving
+- Delete the branch after merge
+
+### 7. Clean Up
+
+```bash
+# Back on main
+git checkout main
+git pull origin main
+
+# Delete local branch (optional)
+git branch -d descriptive-branch-name
+```
+
+## When to Create a PR
+
+**Always create a PR for:**
+
+- Any code changes (even small fixes)
+- Refactors
+- New features
+- Bug fixes
+- Documentation updates
+
+**Never commit directly to main.** Main is protected - you can't anyway.
+
+## Branch Naming
+
+Use descriptive, prefix-style names:
+
+- `fix/` - bug fixes (e.g., `fix/format-drift`)
+- `feat/` - new features (e.g., `feat/eval-harness`)
+- `docs/` - documentation (e.g., `docs/model-selection`)
+- `refactor/` - code refactoring (e.g., `refactor/remove-legacy`)
+- `test/` - test additions (e.g., `test/integration-eval`)
+
+## Commit Messages
+
+Write clear, specific commit messages:
+
+**Good:**
+
+```
+fix: resolve format drift in daemon.rs
+
+Ran cargo fmt to fix method chain formatting.
+No functional changes - just formatting compliance.
+
+Sam & Claude
+```
+
+**Bad:**
+
+```
+fixed stuff
+```
+
+**Structure:**
+
+1. **Type prefix**: `fix:`, `feat:`, `docs:`, `refactor:`, `test:`
+2. **One-line summary**: What changed and why (imperative mood)
+3. **Body**: Details if needed (blank line after summary)
+4. **Attribution**: `Sam & Claude` for collaborative work
+
+## Review Checklist
+
+Before requesting review (or when reviewing):
+
+- [ ] `cargo fmt` passes (formatting is clean)
+- [ ] `cargo clippy` passes (no warnings)
+- [ ] `cargo test --workspace` passes (all tests green)
+- [ ] `./scripts/wiki-lint` passes (no dead links)
+- [ ] Code is readable and well-commented
+- [ ] Commit messages are clear and descriptive
+- [ ] No unrelated changes in the PR
+
+## Common Patterns
+
+### Small Fix PR
+
+One commit, one clear fix:
+
+```bash
+git commit -m "fix: resolve cargo fmt drift
+
+Ran cargo fmt on daemon.rs to fix method chain formatting.
+
+Sam & Claude"
+```
+
+### Feature PR
+
+Multiple commits telling a story:
+
+```
+feat: add eval harness for task completion
+
+Phase 1 implementation:
+- task_evals table schema
+- write_task_eval/read_task_eval methods
+- record_task_completion hook in daemon
+- colibri_get_task_eval MCP tool
+
+Tests:
+- 6 new tests covering schema, CRUD, roundtrip
+- All existing tests still pass
+
+Sam & Claude
+```
+
+### Refactor PR
+
+Rename/reorganize with clear rationale:
+
+```
+refactor: rename golden tests to fixtures
+
+Replace jargon "golden tests" with clearer "fixtures tests".
+Updates all documentation and comments.
+
+Preserved intentional "golden line" metaphor in tokenomics doc.
+
+Sam & Claude
+```
+
+## What Makes a Good PR?
+
+✅ **Clear purpose**: One focused change, not a grab-bag
+✅ **Tests pass**: All gates green before requesting review
+✅ **Small scope**: Easier to review, easier to revert if needed
+✅ **Clear commits**: Each commit tells part of the story
+✅ **Good description**: Explains what, why, and how
+✅ **Self-contained**: Doesn't break other things
+
+❌ **Multiple unrelated changes**: Split into separate PRs
+❌ **Failing tests**: Fix tests before requesting review
+❌ **Unclear commits**: "fixed stuff" doesn't explain anything
+❌ **Huge scope**: Break large changes into smaller PRs
+❌ **Missing description**: Reviewer shouldn't have to guess why
+
+## Merging Strategy
+
+**Squash merge** when:
+
+- PR has messy commit history
+- Commits are interdependent
+- Want clean linear history
+
+**Regular merge** when:
+
+- Each commit tells part of a story
+- Commits are independently reviewable
+- Want to preserve development history
+
+**When in doubt, squash.** Main stays cleaner.
+
+## After Merge
+
+```bash
+# Pull latest main
+git checkout main
+git pull origin main
+
+# Delete local branch
+git branch -d my-feature-branch
+
+# Optional: delete remote branch (Forgejo usually does this)
+git push origin --delete my-feature-branch
+```
+
+## Troubleshooting
+
+### PR has merge conflicts
+
+```bash
+git checkout my-feature-branch
+git pull origin main
+# Resolve conflicts
+git add .
+git commit -m "merge main into my-feature-branch"
+git push
+```
+
+### Tests fail after push
+
+- Check CI logs
+- Run tests locally: `cargo test --workspace`
+- Fix issues, push again
+
+### Reviewer requests changes
+
+- Make requested changes
+- Commit with clear message: `fix: address review feedback`
+- Push and re-request review
+
+## Examples from Our Project
+
+These are illustrative snapshots — the actual branch list changes daily.
+For the current state, run `git log --oneline -20` on `main`.
+
+- `feat/eval-harness-phase1` — Added evaluation harness (732 lines changed)
+- `refactor/rename-golden-to-fixtures` — Renamed golden tests to fixtures (10 files)
+- `fix/socket-fmt-drift` — Fixed cargo fmt drift in daemon socket code
+- `feat/dynamic-agent-capabilities` — Auto-detected ollama/blender via probe
+
+These all followed the pattern: branch → commit → push → PR → review → merge → cleanup.
+
+## Summary
+
+PRs are how we collaborate on code. They provide:
+
+- **Visibility**: Everyone sees what's changing
+- **Review**: Catch bugs before they hit main
+- **History**: Clear record of why changes were made
+- **Quality**: Gates ensure code meets standards
+
+Always use PRs. Never commit directly to main. Write clear descriptions. Keep tests green.

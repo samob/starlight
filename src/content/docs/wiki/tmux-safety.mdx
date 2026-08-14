@@ -1,0 +1,129 @@
+---
+type: Operational Procedure
+title: "tmux-safety"
+description: "Colibri wiki page: tmux-safety"
+tags: [tmux]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-daemon/src/spawner.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# tmux-safety
+
+**Status:** Active safeguard · **Date:** 04.jul.2026
+
+Why Colibri must prevent agents from killing the host tmux server, and how the
+two-layer defense works.
+
+[Related skill: tmux-safety](../../.agent/skills/tmux-safety/SKILL.md)
+
+## The incident
+
+A spawned agent ran `tmux kill-server` during a test. The host tmux server
+terminated immediately — all sessions died, including the operator's. The SSH
+connection dropped because it was inside tmux. The operator had to reconnect
+and restart the agent session from scratch, losing all context.
+
+## Why this is a control-plane concern
+
+Colibri is the supervisor that spawns agents. Those agents run shell commands
+on the host (or in jails). `tmux kill-server` requires no special privileges —
+any user with a tmux session can kill the server they belong to. Since the
+agent user and the operator share the same tmux server on the live USB and
+deployed hosts, an agent mistake kills the operator's session.
+
+This is not a theoretical risk. It happened.
+
+## Two-layer defense
+
+### Layer 1 — System prompt injection (daemon)
+
+`TMUX_GUARDRAIL` in `crates/colibri-daemon/src/spawner.rs` is a const
+string injected into `COLIBRI_SYSTEM_PROMPT` for **every** spawned agent via
+`Spawner::spawn`. The guardrail appears at the top of the agent's system
+prompt — the model sees it before making any tool call.
+
+Coverage: autospawn, socket `spawn-agent`, all future spawn paths through
+`cmd_spawn_agent`.
+
+### Layer 2 — AGENTS.md (project-level)
+
+The "Fatal commands" section in `AGENTS.md` carries the same rule. Every agent
+that reads the project file (zot, pi, hermes) gets it at session start.
+
+### Layer 3 — Skills catalog (queryable)
+
+The `tmux-safety` skill (`.agent/skills/tmux-safety/SKILL.md`) makes this
+knowledge queryable via the skills MCP tools (`skill_search`, `skill_get`).
+Agents that encounter tmux tasks can discover the safety rules through the
+catalog.
+
+### Long-term — Jail confinement
+
+On FreeBSD, the [jailed agent spawn design](../COLIBRI-JAILED-AGENT-SPAWN-DESIGN.md)
+provides process isolation. A jailed agent cannot access the host's tmux socket
+at all. This is the ultimate defense and will become the default on deployed hosts.
+
+## The `-L` escape hatch
+
+Legitimate tmux tests use an isolated socket:
+
+```bash
+tmux -L /tmp/tmux-test -f /dev/null new-session -d -s test ...
+tmux -L /tmp/tmux-test kill-session -t test
+```
+
+The `-L` flag scopes the test to its own socket file — zero risk to the host.
+
+## Background terminal suspension — another tmux hazard (FreeBSD-only)
+
+Hermes's `terminal(background=true)` silently fails on FreeBSD for **any** task
+that runs more than a few seconds. The process gets a SIGTSTP and enters the
+`Ts` (suspended) state:
+
+```bash
+ps aux | grep build → state: Ts, cpu: 0.0%
+# Process appears "running" but is frozen — no output, disk unchanged
+```
+
+This happens because Hermes can't hold a TTY across multiple tool calls on
+FreeBSD. The session reports the process as "running" but CPU sits at 0% and
+the output buffer stays empty — looking identical to a slow-running process.
+
+**Symptom detection (05.jul.2026, confirmed on OSA):**
+
+- `--fetch-only` (5-10 min) hung for 35+ minutes — disk unchanged, CPU 0%
+- Two full build attempts died silently — same Ts state
+- Every `terminal(background=true)` call >30s hits this
+
+**Fix:** Use `tmux send-keys` for ALL tasks >1 minute. The tmux session holds a
+real TTY — processes never get suspended. This applies to `--fetch-only`,
+`cargo build`, `xz`, `npm run build`, and the full `build.sh`.
+
+```bash
+# Instead of terminal(background=true):
+tmux send-keys -t <session>:<window> 'long-running command' Enter
+
+# Monitor:
+tmux capture-pane -t <session>:<window> -p | tail -20
+```
+
+## Code pointers
+
+| Component                      | Location                                                                                                          |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Guardrail constant + injection | `crates/colibri-daemon/src/spawner.rs` (`TMUX_GUARDRAIL` + `inject_tmux_guardrail`, called from `Spawner::spawn`) |
+| AGENTS.md guardrail            | `AGENTS.md` — "Fatal commands" section                                                                            |
+| Skill catalog entry            | `.agent/skills/tmux-safety/SKILL.md`                                                                              |
+| Jail confinement design        | `docs/COLIBRI-JAILED-AGENT-SPAWN-DESIGN.md`                                                                       |
+
+## See also
+
+- [git-merge skill](../../.agent/skills/git-merge/SKILL.md) — another safety-critical
+  skill with explicit escalation rules

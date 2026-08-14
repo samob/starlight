@@ -1,0 +1,157 @@
+---
+type: Agent Harness Reference
+title: "Glasspane — agent state supervision"
+description: "Agent state machine, JSONL streaming, AgentRuntime taxonomy, snapshot API."
+tags: [pane]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-glasspane/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Glasspane — agent state supervision
+
+← [index](./index.md)
+
+## What this is
+
+Glasspane is Colibri's agent observation layer. It watches agent subprocesses
+via their JSONL stdout, folds the stream into a semantic state machine
+(`Idle → Working → Done`), and exposes a snapshot API for dashboards and
+daemon coordination. Every spawned agent — Pi, zot, or a local sample — feeds
+through the same ingestor and ends up in the same taxonomy.
+
+## Decisions
+
+### Agent state as a state machine, not raw event log
+
+Glasspane doesn't just relay raw agent events. It ingests JSONL lines and
+transitions a **named pane** through a finite set of states:
+
+```
+Idle → Working → Blocked → Done
+         ↳ Error
+```
+
+The `AgentState` enum (`Idle, Working, Blocked, Done, Error`) is deliberately
+small. It captures what a supervisor needs to know — "is the agent working?
+blocked? finished?" — without encoding agent-specific semantics. Events that
+don't change the state (e.g. a usage report from zot) are recorded in the pane's
+metadata but don't affect the state machine.
+
+`Stalled` is **not** a sixth variant — it is a derived flag: a pane is stalled
+when no event has arrived within `DEFAULT_STALL_AFTER` (4 hours). Derived
+attention (Error / Blocked / Stalled) is covered by
+[operator-attention](./operator-attention.md).
+
+**Why not just tail the log**: raw event logs are agent-specific and change over
+time (zot adds new event types). The state machine is a stable contract that the
+daemon, TUI, and client CLI can all rely on.
+
+→ [`crates/colibri-glasspane/src/lib.rs`](../../crates/colibri-glasspane/src/lib.rs)
+
+### JSONL streaming (one line = one event)
+
+Agents emit structured events as newline-delimited JSON on stdout. Glasspane
+reads line-by-line with `BufReader`, deserializes each line, and feeds it into
+the `PiJsonlIngestor`, which handles events from any agent runtime (zot, pi, and others).
+
+The reader runs in a **single background task per pane** (`pane_reader_loop`).
+It never blocks the daemon's main loop — the ingestor is a synchronous fold
+that updates the pane's in-memory state, and the snapshot API reads from
+`Arc<RwLock<...>>` with no contention on the reader hot path.
+
+Malformed lines are **skipped** with a counter increment, not an error —
+dropouts in an agent's JSONL shouldn't crash the observer.
+
+**Why JSONL, not a socket or gRPC**: the agent is a subprocess, not a service.
+stdout is the universal interface — every language, every harness, zero setup.
+JSONL is trivial to write from bash, Go, Python, Rust. A structured wire format
+would add a dep and a handshake to every agent.
+
+→ [`crates/colibri-glasspane/src/lib.rs`](../../crates/colibri-glasspane/src/lib.rs)
+(`PiJsonlIngestor`, `pane_reader_loop`)
+
+### `AgentRuntime { Pi, Zot, Local }` — one taxonomy for two harnesses
+
+Pi and zot emit **different** raw event types: Pi uses `agent_start` /
+`turn_end`, zot uses `turn_start` / `done`. Glasspane maps both into the same
+`AgentState` transitions via `zot_event_type()`. The `AgentRuntime` enum tags
+each pane with its harness so the mapping function knows which event vocabulary
+to parse.
+
+The `Pane` struct's `session_id` field uses `#[serde(alias = "pi_session_id")]`
+for backward compatibility with pre-neutrality serialized snapshots.
+
+**Why not have two separate state machines**: the TUI, daemon scheduler, and
+client CLI all need to ask "what state is this agent in?" — they don't care
+whether it's zot or Pi. One taxonomy, one API. The mapping is a ~50-line
+function, not a subsystem.
+
+→ [`crates/colibri-glasspane/src/lib.rs`](../../crates/colibri-glasspane/src/lib.rs)
+(`zot_event_type`, `AgentRuntime`)
+
+### Snapshot API (read-heavy, not write-heavy)
+
+Glasspane exposes a snapshot object (the full set of panes with their current
+state, session ID, timestamp, and metadata) through `Arc<RwLock<...>>`. The
+daemon serves this over its Unix socket to client readers. Writes happen once
+per event; reads are frequent (TUI polls, CLI status checks).
+
+**Why RwLock, not channels**: the write path is low-frequency (agent JSONL at
+human-reading speed), and the read path is lock-free in the common case. A
+channel-based design would add buffering and delivery semantics for a problem
+that's fundamentally about current state, not event delivery.
+
+→ [`crates/colibri-glasspane/src/lib.rs`](../../crates/colibri-glasspane/src/lib.rs)
+(`Supervisor`, `snapshot`)
+
+## Usability roadmap (TODO)
+
+The **attention** half of this roadmap shipped: the derived attention
+predicate, the TUI attention bar / jump keys / filter / row highlight, and
+edge-triggered terminal-capture alerts. See
+[operator-attention](./operator-attention.md) for the shipped system. What
+remains here is the genuinely-unbuilt direction.
+
+### Push notifications outbound, not just on-screen
+
+The operator supervises headless hosts over Tailscale, not by staring at the
+TUI. When a pane raises attention (or hits `Done`), push it **out**: a desktop
+notification on the live image (XFCE) and a **Telegram** message (the token is
+already provisioned). An explicit `colibri notify`-style path — or a glasspane
+event type that a zot/Pi hook fires — lets an agent say "I'm blocked" rather than
+relying only on inferred state. Highest real-world impact item.
+
+### Richer pane rows (context at a glance)
+
+Glasspane already stashes non-state events in pane metadata. Surface that in the
+TUI row: current **repo/branch**, **last line / task summary**, the **jail** the
+agent runs in, optionally listening ports. Turns "Working" into "Working on
+`fix/x` in jail `cms`, last: running tests".
+
+### Persist pane history across daemon restarts
+
+The supervisor is in-memory (`Arc<RwLock<...>>`); a daemon restart loses the
+timeline. Persist pane transitions/history so returning after hours (or a
+reboot) preserves "what happened while I was away". Lightweight durability, not a
+new subsystem.
+
+### Answer a blocked agent from the dashboard (bigger lift)
+
+The snapshot API is read-heavy by design. A future write path — "send input to
+pane N" over the daemon socket — would let the operator **respond** to a blocked
+agent from `colibri-tui`, not just observe/spawn/stop. This is direction, not a
+quick win; it changes the socket from read-only supervision to interactive
+control and needs its own design pass.
+
+## See also
+
+- [agent-harness](./agent-harness.md) — the zot/Colibri split that Glasspane observes
+- [operator-attention](./operator-attention.md) — the shipped attention/alert layer over this state machine, including terminal capture + signature triage
+- [naming-decisions](./naming-decisions.md) — `pi_session_id → session_id`, `pi_type → event_type`

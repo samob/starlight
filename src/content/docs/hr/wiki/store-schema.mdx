@@ -1,0 +1,156 @@
+---
+type: Reference
+title: "Store schema"
+description: "Colibri wiki page: Store schema"
+tags: [store]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-ledger/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Store schema
+
+← [index](./index.md)
+
+Colibri's coordination store is a single SQLite database owned by the `colibri`
+service. It holds the task board, the registry of agents and skills, and the
+vault tenant map. It is not a cache — it is durable state. Most writes happen
+through the daemon's socket API, but the schema belongs to `colibri-ledger`.
+
+→ `crates/colibri-ledger/src/schema.rs`
+
+→ `crates/colibri-ledger/src/lib.rs`
+
+## Decisions
+
+### SQLite, not PostgreSQL, for the control-plane store
+
+The store is SQLite because the control plane needs a single-file database that
+is easy to back up, snapshot, inspect, and ship. PostgreSQL with pgvector is
+planned for retrieval/long-term memory, but the task board and agent registry do
+not need a server process.
+
+The daemon batches related writes and relies on SQLite's WAL mode for concurrent
+readers. This keeps the operator stack self-contained on a small bare-metal host.
+
+### WAL + foreign keys by default
+
+`Store::open` runs three pragmas on every startup:
+
+- `journal_mode=WAL` — readers don't block writers.
+- `synchronous=NORMAL` — a safe middle ground between full-synchronous and OFF.
+- `foreign_keys=ON` — the task/agent FK is enforced.
+
+These are not configurable at runtime. If we ever need different durability or
+concurrency guarantees, we should make it explicit rather than letting the
+connection inherit defaults.
+
+→ `crates/colibri-ledger/src/lib.rs` (`Store::open`)
+
+### Idempotent migrations only
+
+Migrations run on every `Store::open`. They use `IF NOT EXISTS` tables and
+indexes, so repeated runs are safe. We do not ship downward migrations; schema
+evolution is additive tables and columns. If a destructive migration is ever
+needed, it must be a deliberate manual step documented in a handoff.
+
+→ `crates/colibri-ledger/src/schema.rs`
+
+### Four tables for four concerns
+
+| Table     | Concern                 | Key entity |
+| --------- | ----------------------- | ---------- |
+| `tasks`   | Task board              | `Task`     |
+| `agents`  | Registered teammates    | `Agent`    |
+| `skills`  | Team skill catalog      | `Skill`    |
+| `tenants` | Vault/secret tenant map | `Tenant`   |
+
+Tasks carry an `agent_id` foreign key into `agents`. Every other relationship is
+loose — skills are not linked to agents, and tenants are referenced by their
+`tenant_id` in socket commands and provisioning hooks.
+
+→ `crates/colibri-ledger/src/schema.rs`
+
+### Task-status CHECK constraint is the source of truth
+
+`tasks.status` is constrained to `('queued','claimed','started','done','failed')`.
+The Rust `TaskStatus` enum mirrors it, but the database is the final gate. A
+command that tries to insert an unknown status fails at write time.
+
+→ `crates/colibri-ledger/src/schema.rs`
+
+### Agent capabilities stored as JSON, not normalized
+
+`agents.capabilities` is a JSON blob like `["code","rust","freebsd"]`. We
+avoided a separate capabilities table because capability tags are just
+strings, and the team registry is small. Normalized joins would add schema
+complexity without improving query power.
+
+If capability metadata grows (weights, versions, required skills), we can split
+it later; the current schema intentionally stays pragmatic.
+
+→ `crates/colibri-ledger/src/lib.rs` (`register_agent`)
+
+### Tenants encode the 1:1:1 jail/vault/collection map
+
+`tenants` stores `tenant_id`, `jail_root_path`, and `collection_id` as UNIQUE
+columns. The rule is `tenant_id = jail name = Vaultwarden collection`. This
+lets `colibri-vault` look up a jail by name and know exactly which host path and
+Vaultwarden collection to use when writing the environment file.
+
+The tenant `status` column tracks the lifecycle:
+`provisioned → active → stopped → destroyed`. It is independent of whether the
+jail process is running; lifecycle management is a separate concern.
+
+→ `crates/colibri-ledger/src/schema.rs` (comments on `tenants`)
+
+### Default database path is platform-specific
+
+The store default is:
+
+- `COLIBRI_DB_PATH` if set.
+- FreeBSD: `/var/db/colibri/colibri.sqlite`.
+- Linux/macOS: `$XDG_DATA_HOME/colibri/colibri.sqlite`, falling back to
+  `$HOME/.local/share/colibri/colibri.sqlite`, then `/tmp`.
+
+FreeBSD defaults to `/var/db` because that is the conventional local-state
+directory for services. The Linux fallback respects XDG, so development on a
+workstation feels normal.
+
+→ `crates/colibri-ledger/src/lib.rs` (`default_db_path`)
+
+### JSON export for backups and parity tests
+
+`Store::export_json()` dumps all four tables into one JSON object. It exists
+for dual-run parity diffs, ad-hoc backups, and debugging. It is not the primary
+query API; most readers should use the typed methods.
+
+## Entity relationships
+
+```text
+tasks.agent_id ----------> agents.id
+
+ tasks        agents        skills        tenants
+ -----        ------        ------        -------
+ id           id            id            tenant_id
+ agent_id FK  name          name          jail_root_path
+ status       capabilities  description   collection_id
+title        status          category      status
+description  created_at    created_at    created_at
+created_at                               updated_at
+updated_at
+```
+
+## See also
+
+- [task-board](./task-board.md) — task lifecycle and capability matching
+- [operator-cli](./operator-cli.md) — socket commands that write to these tables
+- [vault-provision](./vault-provision.md) — how the tenants table drives env-file provisioning
+- [jail-confinement](./jail-confinement.md) — jail names map to tenant rows
+- [skills-catalog](./skills-catalog.md) — the read-only skills consumer

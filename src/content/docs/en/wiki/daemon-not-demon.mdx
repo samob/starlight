@@ -1,0 +1,91 @@
+---
+type: Glossary
+title: "daemon — why we never say demon"
+description: "The FreeBSD daemon is a helper spirit. The Slovenian demon is something else entirely."
+tags: [glossary, daemon, terminology, slovenian]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "docs/wiki/index.md"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+← [index](./index.md)
+
+The word _daemon_ (spelled with an **a**) is central to Unix and FreeBSD. It
+names a background process that runs persistently, handles requests, and stays
+out of the operator's way. The FreeBSD logo — a cheerful red imp with sneakers
+and a pitchfork — embodies this idea: a helper that works quietly behind the
+scenes.
+
+The Slovenian word _demon_ (spelled with an **e**) means something completely
+different: a malevolent spirit, a devil. The connotation is destructive, not
+helpful.
+
+## The FreeBSD daemon
+
+FreeBSD's mascot, **Beastie**, is drawn as a playful red daemon — a nod to the
+Unix tradition of calling background processes "daemons." The term was borrowed
+from Maxwell's daemon, a thought experiment in thermodynamics about an
+invisible being that sorts molecules — neutral, not evil. Early Unix
+programmers adopted it for programs that sort data invisibly in the
+background.
+
+An OS daemon:
+
+- Runs without a controlling terminal
+- Starts at boot and stays alive
+- Responds to requests (signals, sockets, queues)
+- Cleans up after itself on shutdown
+
+Examples: `sshd` (SSH daemon), `cron` (scheduler daemon), `colibri-daemon`
+(control-plane daemon).
+
+## Why we use _proces v ozadju_ in Slovenian
+
+To avoid the _demon_ (devil) connotation, Slovenian documentation translates
+_daemon_ as **proces v ozadju** — literally "process in the background."
+
+| English        | Slovenian               | Why                                                                    |
+| -------------- | ----------------------- | ---------------------------------------------------------------------- |
+| daemon         | proces v ozadju         | Neutral, descriptive — no devil connotation                            |
+| colibri-daemon | proces v ozadju Colibri | Same term, always                                                      |
+| daemon process | proces v ozadju         | The process IS in the background; the adjective form is less idiomatic |
+
+The adjective form _ozadnji_ (background, as in "background process") was
+considered but _proces v ozadju_ is more natural Slovenian — the noun
+inflects while the prepositional phrase stays fixed:
+
+| Case              | Slovenian         |
+| ----------------- | ----------------- |
+| nominative        | proces v ozadju   |
+| genitive          | procesa v ozadju  |
+| dative / locative | procesu v ozadju  |
+| instrumental      | procesom v ozadju |
+
+## In English: always _daemon_, never _demon_
+
+Throughout Colibri's code, comments, and English documentation, the spelling is
+always **daemon** (with an **a**). The word _demon_ does not appear in any
+English-language Colibri artifact. The wire protocol, CLI commands, Rust
+enums, and log messages all use _daemon_.
+
+This is intentional. _Daemon_ is the correct Unix term. _Demon_ is a
+misspelling that carries the wrong connotation in both English and Slovenian.
+
+## In Slovenian: always _proces v ozadju_, never _demon_
+
+The same line is held in Slovenian translations: _proces v ozadju_ is used
+everywhere a daemon is referenced. The word _demon_ (Slovenian for devil) is
+absent from all Slovenian Colibri documentation. It was removed in a
+comprehensive sweep and the glossary entry confirms the correct term.
+
+## See also
+
+- [naming-decisions](./naming-decisions.md) — all Colibri renames and why
+- [glossary (okrajsave)](../guide/sl/reference/okrajsave.md) — Slovenian technical terms
+- [operator-cli](./operator-cli.md) — the `colibri` CLI talks to the proces v ozadju

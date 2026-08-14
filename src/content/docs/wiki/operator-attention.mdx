@@ -1,0 +1,152 @@
+---
+type: Reference
+title: "Operator attention — \"does this agent need me right now?\""
+description: "The derived need-the-operator view: attention predicate, TUI bar/jump/filter, edge-triggered terminal alerts."
+tags: [operator]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-glasspane-tui/src/main.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Operator attention — "does this agent need me right now?"
+
+← [index](./index.md)
+
+## What this is
+
+Glasspane's supervision spine answers _"what state is this agent in?"_. Attention
+is the layer on top that answers the question an operator actually asks first:
+_"does any agent need me **right now**?"_ It is a **derived view** over the state
+machine and the terminal, surfaced in the TUI and backed by edge-triggered
+alerts — not a sixth state, not a new subsystem.
+
+## Decisions
+
+### Attention is a view, not a state
+
+`AgentState` stays small (`Idle`, `Working`, `Blocked`, `Done`, `Error`).
+"Needs the operator" is a free predicate over it, not another variant:
+
+```rust
+fn needs_attention(pane: &Pane) -> bool {
+    pane.state == AgentState::Error
+        || pane.state == AgentState::Blocked
+        || pane.stalled
+}
+```
+
+`Blocked` is included because the state-machine doc comment says it means
+"waiting on steering / approval / input" — i.e. the agent is parked on the
+operator. One predicate, consumed by the attention bar, the filter, and the
+jump keys, so the definition changes in one place.
+
+`stalled` is itself derived — a pane is stalled when no event has arrived
+within `DEFAULT_STALL_AFTER` (4 hours). It is rare on purpose: attention is
+mostly Errors and Blocked panes; Stalled is the "something is deeply wrong"
+escalation, not a frequent one.
+
+→ [`crates/colibri-glasspane/src/lib.rs`](../../crates/colibri-glasspane/src/lib.rs)
+(`AgentState`, `SupervisedPane::is_stalled_at`, `DEFAULT_STALL_AFTER`)
+
+### The TUI makes attention impossible to miss
+
+When any pane in the **current view** needs attention, the normal header is
+replaced by a red-bordered attention bar listing the offending panes. Rows that
+need attention get an inverted background; the cursor inverts again so the
+operator can still see which one is selected. Two jump keys (`n` / `N`) cycle
+forward/backward through attention panes with wrapping, and `a` toggles an
+attention-only filter. All three operate over the already-filtered pane set.
+
+**Filter composition is AND.** Attention filter composes with the session
+filter, so the bar reflects only what the operator is looking at. A 2026-06
+bug shipped where `has_attention` was computed from the _unfiltered_ snapshot:
+an error in session `s2` lit the bar while viewing session `s1`, and the bar's
+own `filtered_panes()` early-return then drew nothing — so the operator lost
+their header to a blank red box. Fixed by computing attention from
+`filtered_panes()`; covered by a cross-session render test.
+
+**`NO_COLOR` pitfall.** Hermes sessions leak `NO_COLOR=1` into subprocess
+environments, and crossterm honours that convention. Without `force_color_output(true)`
+at startup, a `colibri-tui` spawned from a Hermes session renders without colors —
+the red attention bar becomes invisible. The `main()` function forces color on
+regardless of the parent environment; this is a TUI dashboard, colors are load-bearing.
+
+A future enhancement: showing the attention bar **and** the header simultaneously
+(dual-view) instead of replacing one with the other, so the operator sees pane
+counts and attention panes in one glance without cycling.
+
+→ [`crates/colibri-glasspane-tui/src/main.rs`](../../crates/colibri-glasspane-tui/src/main.rs)
+(`needs_attention`, `render_attention_bar`, `attention_indices`)
+
+### Terminal capture is the complementary signal
+
+The state machine is _"what the agent says"_ (structured JSONL events).
+Terminal capture is _"what the screen shows"_ — the actual text of a pane,
+triaged for known-broken patterns. A pane can be `Working` while its screen
+reads `Active: failed (Result: exit-code)`. Attention is a view over **both**.
+
+A `TerminalRecorder` keeps a bounded frame history (`DEFAULT_HISTORY_CAPACITY`
+= 256 frames). A frame's identity is the **SHA-256 of its stripped text**, so
+polling a near-static pane every second collapses into a compact log of actual
+state transitions instead of thousands of duplicate frames. `capture_tmux_pane`
+shells out to `tmux` for the capture, but `observe()` takes raw text directly —
+the dedup and triage logic is fully testable with no terminal attached.
+
+→ [`crates/colibri-glasspane/src/terminal.rs`](../../crates/colibri-glasspane/src/terminal.rs)
+(`TerminalRecorder`, `Observation`, `capture_tmux_pane`)
+
+### Signature triage, data-driven per OS
+
+A `SignatureSet` scans stripped terminal text and classifies the screen into
+`failures` / `warnings` / `info` / `healthy` (`Severity::{Error, Warn, Info, Ok}`).
+Patterns match as case-insensitive substrings; the first hit records a
+signature and it is not double-reported. Every match carries a human
+`next_action` and an optional `invoke` (a skill the agent can run to
+remediate) — a hit is not "something happened" but "here is what it means and
+what to do".
+
+The detection engine is **data-driven**: a FreeBSD host and a Linux host load
+different `Signature` sets but share the same matcher. `SignatureSet::linux_default`
+ships a small starter set; callers build their own with `SignatureSet::new`.
+This is the per-OS knob Colibri's capability routing leans on.
+
+→ [`crates/colibri-glasspane/src/signatures.rs`](../../crates/colibri-glasspane/src/signatures.rs)
+(`SignatureSet`, `Severity`, `Signature`, `Detection::alertable`)
+
+### Alerts are edge-triggered, not level-triggered
+
+A failure/warning signature is reported **only on the frame where it first
+appears**, not on every subsequent frame that still shows it — returned as
+`Observation::Recorded { uuid, new_alerts }` with only the newly-fired matches.
+When the condition clears and later recurs, it fires again. Level-triggered
+alerts on a 1s poll would re-notify every second for the lifetime of a stuck
+pane; edge-triggering makes each alert mean "this just started."
+
+→ [`crates/colibri-glasspane/src/terminal.rs`](../../crates/colibri-glasspane/src/terminal.rs)
+(`TerminalRecorder::observe`, `Observation::new_alerts`)
+
+## What is still open
+
+- **Outbound push.** Attention is surfaced on-screen (the bar, the highlight).
+  The operator supervises headless hosts over Tailscale, not by watching the
+  TUI. Pushing attention **out** — a desktop notification on the live image
+  and a Telegram message — is the highest-impact unfinished piece. Token is
+  already provisioned; transport (`colibri notify` vs. a glasspane event a
+  harness hook fires) is undecided.
+- **Answering a blocked agent from the dashboard.** The snapshot API is
+  read-heavy by design. A write path ("send input to pane N" over the daemon
+  socket) would let the operator respond to a `Blocked` pane from the TUI.
+  Changes the socket from supervision to interactive control — its own design
+  pass.
+
+## See also
+
+- [glasspane](./glasspane.md) — the state machine attention is a view over
+- [tui](./tui.md) — the dashboard that surfaces attention
+- [terminal](./terminal.md) — the terminal capability attention's keybindings rely on

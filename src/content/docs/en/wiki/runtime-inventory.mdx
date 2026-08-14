@@ -1,0 +1,104 @@
+---
+type: Agent Harness Reference
+title: "Runtime inventory and host status"
+description: "Colibri wiki page: Runtime inventory and host status"
+tags: []
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-runtime/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Runtime inventory and host status
+
+← [index](./index.md)
+
+Colibri discovers the host in two complementary ways:
+
+1. **Runtime inventory** — a one-shot probe that reports versions installed on
+   the machine (`node`, `npm`, `pi`, `zot`, package manager, OS, etc.).
+2. **Watchdog host status** — a read-only, newline-framed Unix-socket call to
+   the Clawdie watchdog that returns live health metrics.
+
+Both are intentionally additive: they read from Clawdie, they do not change
+it. This page records the design of those read-only integrations.
+
+## Runtime inventory probe
+
+The `colibri-runtime-inventory` binary (`src/bin/runtime_inventory.rs`) emits a
+single JSON object matching the `clawdie.runtime-version-inventory.v1` schema
+from `crates/colibri-contracts/src/lib.rs`.
+
+### Detection strategy
+
+| Field             | How it is detected                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------ |
+| `host`            | `COLIBRI_HOST` → `HOSTNAME` → `hostname` command → `"unknown"`                                         |
+| `os`              | `uname -sr` + target architecture; falls back to `std::env::consts`                                    |
+| `node`            | `node --version`                                                                                       |
+| `npm`             | `npm --version`                                                                                        |
+| `npm_prefix`      | `npm config get prefix`                                                                                |
+| `package_manager` | `pkg` on FreeBSD, otherwise `apt` / `dnf` / `brew`                                                     |
+| `pi`              | `PI_BIN` → `~/.npm-global/bin/pi` → `pi --version` → package.json of `@earendil-works/pi-coding-agent` |
+| `zot`             | `ZOT_BIN` → `zot --version` across PATH and candidate locations                                        |
+
+### Why this shape
+
+- `pi` is an npm package installed in `node_modules`, so version detection must
+  fall back to reading its package manifest when `--version` is missing.
+- `zot` is a single Go binary, so a plain `--version` probe is correct.
+- `pi`/`zot` are optional; a host that only runs one agent runtime should
+  still produce a valid inventory.
+
+## Watchdog host status
+
+`crates/colibri-runtime/src/lib.rs` implements the watchdog reader. It connects
+over a Unix domain socket, sends `{"cmd":"status"}\n`, reads back one
+newline-terminated JSON line, and normalizes the response into `HostStatus`.
+
+### Socket path resolution
+
+The search order lets operators, services, and test harnesses override the
+socket location without recompiling:
+
+1. `COLIBRI_WATCHDOG_SOCKET` (explicit override)
+2. `COLIBRI_SERVICE_NAME` (default `clawdie`) → `{service}-watchdog.sock`
+3. `TMP_IPC_DIR/{service}-watchdog.sock`
+4. `AGENT_TMP_DIR/ipc/{service}-watchdog.sock` or
+   `CLAWDIE_TMP_DIR/ipc/{service}-watchdog.sock`
+5. `$HOME/ai/colibri/tmp/ipc/{service}-watchdog.sock`
+6. `tmp/ipc/{service}-watchdog.sock` (final fallback)
+
+### Wire protocol
+
+- Framing: one line, newline-terminated.
+- Request: `{"cmd":"status"}\n`.
+- Expected response: `{"ok": true, "data": { ... watchful host fields ... }}`.
+- Timeout: 2 seconds by default, overridable in `WatchdogReadOptions`.
+
+### Normalization rules
+
+`normalize_watchdog_status()` in `crates/colibri-runtime/src/lib.rs` is defensive:
+
+- Missing fields default to `"unknown"` for strings, `0` for counters, and
+  `false` for booleans.
+- `controlplane_status` is lifted from `controlplane.overallStatus`.
+- The original raw object is preserved under `HostStatus.raw` so callers can
+  access fields Colibri does not yet model.
+
+## Golden fixtures
+
+`crates/colibri-contracts/tests/fixtures.rs` parses committed inventory and
+host-status manifests in `manifests/` and round-trips them through the Rust
+structs. Those fixtures come from real hosts (`osa`, `domedog`, `debby`, the
+operator USB) and are treated as cross-platform source material.
+
+## See also
+
+- [contracts](./contracts.md) — stable schemas for inventory and host-status.
+- [cost-model](./cost-model.md) — how runtime inventory feeds cost decisions.

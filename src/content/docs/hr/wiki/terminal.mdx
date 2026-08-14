@@ -1,0 +1,158 @@
+---
+type: Operational Procedure
+title: "Terminal — capability, not brand"
+description: "Colibri wiki page: Terminal — capability, not brand"
+tags: [terminal]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-glasspane-tui/src/main.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Terminal — capability, not brand
+
+← [index](./index.md)
+
+## What this is
+
+A decision about **which terminal capability** Colibri's operator surfaces
+depend on, and why the choice fell on Kitty. The decision is about
+_capabilities_ (extended-key reporting); Kitty is the instance that provides
+them. A terminal without the capability is not "wrong" — it just degrades
+specific keybindings.
+
+## Decision
+
+The dashboard client (`colibri-tui`) and the agents it supervises (zot, pi)
+are keyboard-driven, and several of their bindings rely on distinguishing
+**modified keys**: `Tab` vs `Shift-Tab` (cycle sessions), `n` vs `N` (next vs
+previous attention pane), `Enter` (open detail). Terminals built on VTE
+(xfce4-terminal, GNOME Terminal, Sakura) and Qt-based Konsole **collapse**
+modifiers: `Shift-Enter`, `Ctrl-Enter`, and `Alt-Enter` all arrive as a plain
+`Enter`, so two distinct bindings become indistinguishable.
+
+The recommended terminal is **Kitty**: GPU-accelerated, keyboard-driven, and it
+reports modified keys via the Kitty keyboard protocol / extended-keys. It is the
+shipped default on the operator USB, with `xterm` retained as the always-works
+fallback (Kitty is GPU-only; it cannot start on a headless `bhyve` surface with
+no GL, so the rescue path falls back to `xterm`).
+
+**Install:** `pkg install kitty` (FreeBSD port `x11/kitty`, currently 0.47.4).
+
+→ [`crates/colibri-glasspane-tui/src/main.rs`](../../crates/colibri-glasspane-tui/src/main.rs)
+(the bindings above)
+
+## Decisions
+
+### tmux must forward modifiers, not strip them
+
+Inside tmux the same collapse happens by default: tmux strips modifier
+information unless told otherwise. The live USB ships a `~/.config/tmux/tmux.conf`
+that enables passthrough:
+
+```
+set -g extended-keys on
+set -g extended-keys-format csi-u
+```
+
+`csi-u` is the most reliable format and needs tmux 3.5+ (the live USB's port
+is 3.5a). Pre-3.5 tmux (e.g. an older Linux build host) omits the second line
+and falls back to the xterm `modifyOtherKeys` format, which Colibri also
+parses. **Where this matters:** `colibri-tui` launched raw (no tmux) gets
+modified keys natively; the tmux config only matters for the run-inside-tmux
+workflow.
+
+→ `crates/colibri-glasspane-tui/src/main.rs` (the event loop's key handling)
+
+### Raw-kitty vs in-tmux is a real distinction
+
+Two equally-valid ways to run the dashboard:
+
+- **Raw** — `kitty /usr/local/bin/colibri-tui`. Kitty reports modifiers
+  directly; no tmux config needed. This is what the live-USB desktop launcher
+  does.
+- **In tmux** — `kitty` then `tmux` then `colibri-tui`. Now the tmux
+  extended-keys config above is load-bearing; without it, `Shift-Tab` and `N`
+  stop reaching the app.
+
+The desktop launcher path is raw by design, so the dashboard works without any
+operator tmux setup. The in-tmux path is for operators who want tabs/splits
+around the dashboard.
+
+### The SSH terminfo gotcha
+
+Kitty sets `TERM=xterm-kitty`. A remote host that has never seen Kitty does not
+carry that terminfo entry, so `tmux a` fails with `missing or unsuitable
+terminal: xterm-kitty`. The fix is Kitty's SSH kitten, which copies the terminfo
+to the remote on connect — used as the `ssh` alias on operator machines. Lying
+with `TERM=xterm-256color` works but discards the extended-key capability,
+defeating the reason for the terminal choice.
+
+### Agent harness surfaces the same requirement
+
+Agent harnesses (zot, pi) — spawnable Colibri backends — print a startup warning when
+tmux extended-keys is off, because its own bindings (`Enter` to submit,
+`Shift-Enter` for newline) hit the identical collapse. The decision here is the
+same one, stated for Colibri's surfaces: pick a terminal that reports
+modifiers, and configure tmux to forward them.
+
+## Operator ergonomics
+
+Beyond key passthrough, the operator `tmux.conf` ships a few quality-of-life
+defaults so the run-inside-tmux workflow feels native for reading agent output
+and driving the dashboard. These are conveniences, not capability requirements —
+the dashboard works without them.
+
+→ source: `live/operator-session/panel-skel/.config/tmux/tmux.conf` (clawdie-iso)
+
+### Copy mode (vi keys)
+
+`mode-keys vi` makes tmux copy mode use vi motions, so an operator scrolls and
+selects scrollback the same way they edit: `prefix [` enters copy mode, `/` and
+`?` search, `n`/`N` step matches, `Space` starts a selection (vi's `v`), `Enter`
+yanks. It is read-only navigation over a pane's history — useful for triaging a
+long agent transcript without a mouse.
+
+### System clipboard (OSC-52)
+
+`set-clipboard on` routes a tmux yank to the host clipboard via the terminal's
+OSC-52 escape, which kitty forwards. An operator selects an error line in a tmux
+pane and pastes it into any host app — no mouse round-trip, and it works over
+SSH.
+
+### Attention without popups
+
+`monitor-activity on` with `visual-activity off` flags a background window in the
+status list (not a popup) when it produces output — e.g. a spawned agent
+finishing while the operator watches another window. This is the tmux-local echo
+of the "needs the operator" idea the dashboard surfaces properly in
+[operator-attention](./operator-attention.md).
+
+### Status-bar theme
+
+The status bar uses a mixed palette (Ubuntu Yaru aubergine + warm grey, with a
+blue active-window block) and mirrors the XFCE panel clock's date format
+(`%d. %b. %y`) so the two clocks read the same. Cosmetic only; exact colors live
+in the config, not here.
+
+## Requirements, stated once
+
+- A terminal that reports modified keys (Kitty, Ghostty, WezTerm). On the
+  operator USB that terminal is Kitty.
+- For the in-tmux workflow: tmux 3.5+ with `extended-keys on` +
+  `extended-keys-format csi-u` (pre-3.5: `extended-keys on` only).
+- For SSH into a Kitty session: the Kitty SSH kitten, or a one-time terminfo
+  install, so `TERM=xterm-kitty` resolves on the remote.
+
+## See also
+
+- [tui](./tui.md) — the dashboard whose bindings drive this requirement
+- [operator-attention](./operator-attention.md) — the jump keys (`n` / `N`)
+  that depend on modifier reporting
+- [deployment](./deployment.md) — the operator USB that ships Kitty + the tmux
+  config

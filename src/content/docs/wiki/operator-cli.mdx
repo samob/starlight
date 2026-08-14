@@ -1,0 +1,140 @@
+---
+type: Reference
+title: "Operator CLI (`colibri`)"
+description: "Colibri wiki page: Operator CLI (`colibri`)"
+tags: [operator]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-client/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Operator CLI (`colibri`)
+
+← [index](./index.md)
+
+The `colibri` binary is the operator's command-line interface to the daemon.
+It wraps a typed Unix-socket client (`DaemonClient`) and turns typed commands
+into newline-delimited JSON messages on the control-plane socket. It is not
+where policy lives — policy lives in the daemon behind the socket.
+
+## Job of the CLI
+
+The CLI has two responsibilities:
+
+1. **Parse shell input** into strongly-typed commands.
+2. **Send those commands** to the daemon and print the JSON response.
+
+It does not contain business logic about session compaction, task scheduling,
+or jail confinement. That keeps the CLI small and lets any other client (TUI,
+MCP bridge, web dashboard, tests) perform the same operations with the same
+protocol.
+
+→ `crates/colibri-client/src/bin/colibri.rs` (argument parsing and `run` dispatch)
+
+→ `crates/colibri-client/src/lib.rs` (`DaemonClient` request/response wrapper)
+
+## Decisions
+
+### One binary, one socket, one protocol
+
+Every command — `status`, `snapshot`, `spawn-agent`, `create-task`,
+`register-tenant` — goes over the same Unix socket. The CLI builds a
+`DaemonClient`, serializes a `ColibriCommand`, writes one line ending in `\n`,
+and reads one `ColibriResponse` line back.
+
+Because the protocol is newline-delimited JSON, operators can still debug with
+`nc -U` or similar when the CLI is not enough. The socket is the stable API;
+the CLI is a polished client.
+
+→ `crates/colibri-daemon/src/lib.rs` (`ColibriCommand`, `ColibriResponse`)
+
+→ `crates/colibri-daemon/src/socket.rs` (dispatch table)
+
+### Socket resolution order matches other clients
+
+The CLI resolves the daemon socket the same way the TUI and MCP bridge do:
+
+1. `--socket PATH`
+2. `COLIBRI_DAEMON_SOCKET`
+3. `DaemonConfig::from_env().socket_path`
+
+Sharing the resolution order means documentation, environment setup scripts,
+and operator muscle memory apply to every client.
+
+→ `crates/colibri-client/src/bin/colibri.rs` (`default_socket_path`)
+
+### No write-gating inside the CLI itself
+
+Commands that mutate state (`create-task`, `stop-agent`, `set-cost-mode`,
+`register-tenant`) are not blocked by CLI flags. The gate is the Unix socket
+itself: the daemon is configured to listen on a unix socket with operator-only
+permissions, and the daemon validates each command. This avoids two parallel
+permission layers that could drift out of sync.
+
+This is an intentional contrast with `colibri-mcp`, which exposes the daemon to
+editor assistants and therefore uses `COLIBRI_MCP_WRITE=1` as an explicit trust
+switch. An operator at the shell already has that trust by virtue of the socket.
+
+→ [external-mcp](./external-mcp.md)
+
+### Commands return JSON, not human prose
+
+All successful CLI commands print pretty-printed JSON. This keeps the output
+scriptable (`colibri snapshot | jq '.panes[] | select(.state == "working")'`)
+and consistent with the socket protocol. If a command fails, the CLI prints the
+daemon's error message to stderr and exits non-zero.
+
+→ `crates/colibri-client/src/lib.rs` (`request`, error handling)
+
+### `spawn-agent` accepts jail confinement directly
+
+The `--jail-name` and `--jail-root` flags on `spawn-local` and `spawn-agent`
+build a `JailConfig` that is sent to the daemon. The same type is re-exported
+from `colibri-daemon::spawner` so the CLI crate does not have to depend on the
+daemon crate just to build a config.
+
+Pairing `--jail-name` with `--jail-root` is the only path that triggers vault
+provisioning after a spawn, because the daemon needs both the jail identity
+and the host-visible jail root.
+
+→ `crates/colibri-client/src/lib.rs` (`JailConfig` re-export)
+
+→ `crates/colibri-daemon/src/spawner.rs`
+
+### Local sample agent lives next door
+
+The same crate also ships `colibri-test-agent`, a tiny sample binary used by
+tests and the TUI's spawn shortcut. Keeping it in `colibri-client` keeps the
+sample close to its primary caller without adding a new crate.
+
+→ `crates/colibri-client/src/bin/colibri_test_agent.rs`
+
+## Notable commands
+
+| Command                                                          | Purpose                           |
+| ---------------------------------------------------------------- | --------------------------------- |
+| `status`                                                         | daemon health, paths, cost mode   |
+| `snapshot` / `glasspane-snapshot`                                | current pane radar view           |
+| `list-sessions`                                                  | active agent sessions             |
+| `spawn-local` / `spawn-agent`                                    | start an agent, optionally jailed |
+| `stop AGENT_ID`                                                  | terminate a pane/agent            |
+| `create-task` / `intake-task` / `claim-task` / `transition-task` | task-board workflow               |
+| `set-cost-mode MODE`                                             | acknowledge/toggle cost mode      |
+| `register-tenant` / `list-tenants`                               | vault provisioning bookkeeping    |
+| `register-skill` / `list-skills`                                 | skill catalog maintenance         |
+| `register-agent` / `list-agents`                                 | agent capability registration     |
+
+## See also
+
+- [tui](./tui.md) — the live terminal dashboard that uses the same `DaemonClient`
+- [glasspane](./glasspane.md) — the pane state machine behind `snapshot`
+- [task-board](./task-board.md) — commands that manipulate the task board
+- [store-schema](./store-schema.md) — SQLite entities queried by the CLI
+- [vault-provision](./vault-provision.md) — why `register-tenant` carries a jail root path
+- [external-mcp](./external-mcp.md) — another daemon client with write-gating

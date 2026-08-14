@@ -1,0 +1,362 @@
+---
+type: Reference
+title: "SSH Bridge — USB→Mother MCP Transport"
+description: "Colibri wiki page: SSH Bridge — USB→Mother MCP Transport"
+tags: [ssh]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-mcp/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# SSH Bridge — USB→Mother MCP Transport
+
+**Status:** Shipped — forced-command SSH + Tailscale, peer auth, key-on-seed.
+**Date:** 29.jun.2026
+**Driven by:** Mother hive communication; every USB node uses this to register and report cost.
+
+> **Companion doc:** [mother-hive](./mother-hive.md) — the _why_ behind each decision
+> (forced-command choice, single home, peer auth, seed-key policy). This doc
+> covers the _how_: the call flow, the pieces, and what to check when it breaks.
+
+← [index](./index.md)
+
+## What this is
+
+USB-booted Colibri nodes talk to the mother node over SSH. No listening daemon
+on mother, no REST API, no gRPC — just `ssh colibri@mother` with a forced
+command. The SSH transport carries JSON-RPC on stdin/stdout; the mother-side
+`authorized_keys` restricts the connection to only the MCP dispatch wrapper.
+Tailscale encrypts the wire.
+
+## Why SSH instead of a daemon
+
+A listening TCP service means: TLS certificates, auth tokens, open ports, and a
+process that must stay up. SSH gives us authentication (ed25519 keys), transport
+encryption (via Tailscale + SSH), and confinement (forced command) — all
+configured with one OpenSSH feature. There is no extra process to monitor:
+`sshd` is already running on every FreeBSD host.
+
+## Architecture diagram
+
+```
+┌───────────────────────────── USB NODE ──────────────────────────────┐
+│                                                                      │
+│  clawdie-system-probe                                                │
+│       │                                                              │
+│       ▼                                                              │
+│  colibri-daemon                                                      │
+│       │  colibri_external_mcp_call_tool(                             │
+│       │    server="mother", tool="node_register", args={...})        │
+│       ▼                                                              │
+│  colibri-mcp (MCP protocol interpreter)                              │
+│       │  reads external-mcp.json registry entry "mother"             │
+│       ▼                                                              │
+│  ssh -i /var/db/colibri/.ssh/mother-mcp \                            │
+│      -o StrictHostKeyChecking=accept-new \                           │
+│      colibri@mother                                                  │
+│       │  no remote command — SSH invokes forced-command wrapper      │
+│       │                                                              │
+│  Seed partition:                                                     │
+│  CLAWDIESEED/colibri/ssh/mother-mcp   ← private key (never in ISO)   │
+│                                                                      │
+└─────────────────────── Tailscale encrypted ──────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────── MOTHER (osa) ───────────────────────────┐
+│                                                                        │
+│  sshd                                                                  │
+│       │  ~colibri/.ssh/authorized_keys:                                │
+│       │    command="/usr/local/bin/colibri-mcp-ssh",restrict ssh-…     │
+│       ▼                                                                │
+│  /usr/local/bin/colibri-mcp-ssh  (forced-command wrapper)              │
+│       │  SSH_ORIGINAL_COMMAND = ""   →  exec colibri-mcp (stdio MCP)   │
+│       │  SSH_ORIGINAL_COMMAND = "tools" → exec colibri-mcp tools       │
+│       │  SSH_ORIGINAL_COMMAND = "report-task-cost" → psql INSERT       │
+│       │  everything else → rejected (exit 1)                           │
+│       ▼                                                                │
+│  /usr/local/bin/colibri-mcp  (MCP host on mother)                      │
+│       │  reads external-mcp.json registry on mother                    │
+│       │  ┌──────────────┬───────────────────┬──────────────────┐       │
+│       │  │ node-register│ geodesic-dome     │ mother-build     │       │
+│       │  │ (shell)      │ (python)          │ (shell)          │       │
+│       │  └──────┬───────┴───────────────────┴──────────────────┘       │
+│       ▼         │                                                      │
+│  /usr/local/bin/node-register-mcp                                      │
+│       │  parameterized UPSERT via psql -v :'variable'                  │
+│       ▼                                                                │
+│  PostgreSQL (mother_hive)                     peer auth for 'colibri'  │
+│       │  hive_nodes ← INSERT/UPDATE                                    │
+│       │  derive_capabilities() trigger fires on INSERT                 │
+│       ▼                                                                │
+│  JSON response ← back through stdout → SSH → daemon → agent            │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+## Call flow — end to end
+
+### 1. USB node boots
+
+The seed importer (`clawdie-live-seed`) copies the `mother-mcp` private key
+from the seed partition into `/var/db/colibri/.ssh/mother-mcp` (daemon home).
+The daemon starts. The `clawdie-system-probe` collects hardware facts.
+
+### 2. Agent triggers registration
+
+An autospawned agent (or operator-initiated task) calls:
+
+```
+colibri_external_mcp_call_tool(
+  server = "mother",
+  tool   = "node_register",
+  arguments = { hostname: "clawdie-node", node_type: "live-usb",
+                machine_id: "a1b2...", hw_profile: { ... } }
+)
+```
+
+### 3. colibri-mcp spawns SSH
+
+The MCP protocol interpreter reads the external MCP config
+at /usr/local/etc/colibri/external-mcp.json,
+finds the `"mother"` server entry, and spawns:
+
+```sh
+ssh -i /var/db/colibri/.ssh/mother-mcp \
+    -o StrictHostKeyChecking=accept-new \
+    colibri@mother
+```
+
+No remote command is specified — SSH connects with an empty command field.
+The `command="..."` directive in `authorized_keys` takes over.
+
+The JSON-RPC request (`tools/call` with `node_register`) is written to the
+child's stdin; the response is read from stdout. One process per call — no
+connection pooling, no persistent sessions.
+
+### 4. Mother's sshd invokes the forced command
+
+The `authorized_keys` line on mother:
+
+```
+command="/usr/local/bin/colibri-mcp-ssh",restrict ssh-ed25519 AAAAC3... mother-mcp-20250601
+```
+
+The `restrict` keyword disables all SSH features (port forwarding, agent
+forwarding, PTY allocation, X11, user-rc) in one flag. The `command=` directive
+replaces whatever the client requested.
+
+### 5. colibri-mcp-ssh dispatches
+
+The wrapper reads `SSH_ORIGINAL_COMMAND` and routes:
+
+| `SSH_ORIGINAL_COMMAND` | Action                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| `""` (empty)           | `exec colibri-mcp` — persistent JSON-RPC on stdin/stdout                               |
+| `tools`                | `exec colibri-mcp tools` — one-shot tool list for debugging                            |
+| `report-task-cost`     | Reads JSON from stdin, INSERTs into `task_costs` via `psql`                            |
+| `node_register`        | Reads JSON-RPC `tools/call` from stdin, `exec node-register-mcp` → UPSERT `hive_nodes` |
+| anything else          | Rejected — JSON-RPC error on stderr, exit 1                                            |
+
+The `""` path is the normal path: it chains into `colibri-mcp` in stdio MCP
+mode, which reads `tools/call` from stdin, resolves the tool name
+(`node_register`), and spawns the matching script from its own
+external MCP registry.
+
+A node may also send `node_register` as the forced command **directly** (the
+path the live-USB registration flow takes): the wrapper then skips the
+persistent `colibri-mcp` host and `exec`s `node-register-mcp` straight away
+(#325). Before that allowlist entry existed the wrapper rejected `node_register`
+as unknown, so USB nodes could not join the hive.
+
+### 6. node-register-mcp UPSERTs
+
+The `node-register-mcp` script receives the JSON-RPC `tools/call` on stdin,
+extracts `hostname`, `node_type`, `machine_id`, and `hw_profile`, and runs a
+parameterized UPSERT via `psql`:
+
+```sql
+INSERT INTO hive_nodes (hostname, node_type, machine_id, hw_profile, status, last_seen)
+VALUES (:'hostname', :'node_type', NULLIF(:'machine_id', ''), (:'hw_profile')::jsonb, 'online', now())
+ON CONFLICT (hostname) DO UPDATE SET ...
+```
+
+The `:'variable'` psql quoting expands to a safely single-quoted SQL literal.
+The JSON blob is a bound variable — never interpolated into SQL by the shell.
+The `derive_capabilities()` trigger fires on INSERT/UPDATE, computing
+`has_gpu`, `gpu_vendor`, `can_run_local_llm`, `inference_tier`, etc.
+
+### 7. Response returns
+
+A JSON-RPC success response travels back: psql stdout → `node-register-mcp` →
+MCP wrapper → ssh stdout → colibri-mcp on the USB node → `colibri_external_mcp_call_tool`
+returns to the agent. The SSH child process is killed and cleaned up.
+
+## Key files
+
+| Path                                 | Role                                                                                         | Lives on   |
+| ------------------------------------ | -------------------------------------------------------------------------------------------- | ---------- |
+| /var/db/colibri/.ssh/mother-mcp      | ed25519 private key for SSH to mother                                                        | USB (seed) |
+| /var/db/colibri/.ssh/authorized_keys | Forced-command wrapper entry for incoming MCP connections                                    | Mother     |
+| /usr/local/bin/colibri-mcp-ssh       | SSH forced-command dispatch wrapper (allowlists: "", tools, report-task-cost, node_register) | Mother     |
+| /usr/local/bin/colibri-mcp           | MCP protocol host — presents Colibri tools + proxies external servers                        | Both       |
+| /usr/local/bin/node-register-mcp     | Shell MCP tool: receive hw-probe, UPSERT into `hive_nodes`                                   | Mother     |
+| `packaging/mother/MOTHER-SETUP.md`   | Contains USB-side external-mcp.json example and mother-side server registry                  | Repo       |
+| `packaging/mother/setup-mother.sh`   | Idempotent deploy — creates user, keys, authorized_keys, pg_hba, schema                      | Repo       |
+| `packaging/mother/colibri-mcp-ssh`   | Source of the dispatch wrapper (installed by setup-mother.sh)                                | Repo       |
+| `packaging/mother/node-register-mcp` | Source of the registration tool (installed by setup-mother.sh)                               | Repo       |
+| `packaging/mother/MOTHER-SETUP.md`   | Setup instructions, first-run checklist, verification                                        | Repo       |
+| `crates/colibri-mcp/src/external.rs` | External MCP session: spawn, initialize, request, read, shutdown                             | Repo       |
+
+## Security model
+
+### Layer 1 — Tailscale encryption
+
+All traffic between USB node and mother transits the Tailscale mesh. The wire
+is encrypted before SSH ever sees it. Even if SSH were misconfigured, an
+attacker on the network path cannot observe or tamper with the session.
+
+→ [hive-routing §Fleet SSH reliability](./hive-routing.md#fleet-ssh-reliability)
+
+### Layer 2 — SSH forced command (`command=` + `restrict`)
+
+The `authorized_keys` entry forces every connection through
+`/usr/local/bin/colibri-mcp-ssh`. The `restrict` keyword disables:
+
+- Port forwarding (no tunnel to internal services)
+- Agent forwarding (no key reuse)
+- PTY allocation (no interactive session)
+- X11 forwarding
+- User-rc (`~/.ssh/rc`)
+
+A compromised USB node that holds the private key can only invoke the wrapper.
+It cannot get a shell, forward a port, or run an arbitrary command.
+
+### Layer 3 — Wrapper allowlist
+
+`colibri-mcp-ssh` further constrains what the caller can do through the wrapper.
+Only three `SSH_ORIGINAL_COMMAND` values are allowed: `""`, `"tools"`, and
+`"report-task-cost"`. Every other value is rejected. The caller cannot pass
+flags to `colibri-mcp` that haven't been written yet.
+
+### Layer 4 — PostgreSQL peer auth
+
+The `colibri` OS user connects to the `mother_hive` database via peer
+authentication — the kernel attests the Unix user, no password needed. The
+`pg_hba.conf` rule:
+
+```
+local   mother_hive   colibri   peer
+```
+
+must precede any catch-all `local all all` line (pg_hba is first-match).
+
+### Layer 5 — Parameterized SQL
+
+`node-register-mcp` uses `psql -v :'variable'` quoting in a heredoc. The JSON
+hw-profile blob is a bound variable that psql dollar-quotes internally. The
+shell never interpolates user input into SQL. This is a defense-in-depth
+measure: even if the wrapper and peer auth were bypassed, the database layer
+is not injectable.
+
+### Key hygiene
+
+| Property         | Rule                                                              |
+| ---------------- | ----------------------------------------------------------------- |
+| Key location     | Seed partition only, never in the ISO image                       |
+| Key generation   | `ssh-keygen -t ed25519` by `setup-mother.sh`                      |
+| Key reuse        | Not reused for Forgejo or any other service                       |
+| Blast radius     | MCP-over-SSH only — compromise lets attacker register fake nodes  |
+| Build-time guard | Release build refuses to bake the key into the ISO                |
+| Graceful absence | ISO boots without the key; SSH to mother fails with a clear error |
+
+→ [mother-hive §Key on seed partition](./mother-hive.md#key-on-seed-partition-not-in-the-image)
+
+## Setup
+
+Setup is fully automated by `setup-mother.sh`. Run it once on mother as root:
+
+```sh
+cd /home/clawdie/ai/colibri
+doas ./packaging/mother/setup-mother.sh
+```
+
+The script:
+
+1. Installs binaries from `target/release`
+2. Installs MCP scripts (`colibri-mcp-ssh`, `node-register-mcp`, etc.)
+3. Creates the `colibri` OS user with `/usr/sbin/nologin`
+4. Generates the mother-mcp ed25519 keypair
+5. Writes `authorized_keys` with `command=` + `restrict`
+6. Configures PostgreSQL peer auth (`CREATE ROLE`, `GRANT`, `pg_hba.conf`)
+7. Runs `mother_schema.sql` (idempotent)
+8. Creates the external MCP config with mother servers (at /usr/local/etc/colibri/external-mcp.json)
+9. Prints the private key — copy it to the USB seed partition
+
+On the USB node side, install the key and configure the external MCP registry:
+
+```json
+{
+  "servers": {
+    "mother": {
+      "command": "ssh",
+      "args": [
+        "-i", "/var/db/colibri/.ssh/mother-mcp",
+        "-o", "StrictHostKeyChecking=accept-new",
+        "colibri@mother"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+→ [MOTHER-SETUP.md](../../packaging/mother/MOTHER-SETUP.md) — full first-run checklist, verification steps, and key management.
+
+## Troubleshooting
+
+| Symptom                                   | Likely cause                                                 | Check                                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `Permission denied (publickey)`           | Private key missing or wrong permissions                     | `ls -l /var/db/colibri/.ssh/mother-mcp` — should be mode 600, owned by colibri                                 |
+| `Permission denied (publickey)`           | Public key not in `authorized_keys` on mother                | `grep mother-mcp /var/db/colibri/.ssh/authorized_keys` on mother                                               |
+| `Connection refused`                      | Tailscale not running or wrong IP                            | `tailscale status` on both ends; verify the IP in external-mcp.json matches                                    |
+| `Connection refused`                      | sshd not running on mother                                   | `service sshd status` on mother                                                                                |
+| `rejected: <command>` on stderr           | Wrapper allowlist blocked the request                        | Check what `SSH_ORIGINAL_COMMAND` is being sent — only `""`, `"tools"`, `"report-task-cost"` work              |
+| `external MCP server returned error`      | `node-register-mcp` failed (bad input, psql error)           | Run `node-register-mcp` directly on mother with a sample JSON to isolate                                       |
+| `psql: FATAL: Peer authentication failed` | Peer auth rule missing or after a catch-all in `pg_hba.conf` | `SHOW hba_file;` then `grep -n 'mother_hive.*colibri' $HBA` — peer rule must be first                          |
+| `permission denied for table hive_nodes`  | `GRANT` not applied for the colibri role                     | `sudo -u postgres psql -d mother_hive -c "\dp hive_nodes"` — colibri must have INSERT, UPDATE                  |
+| `relation "hive_nodes" does not exist`    | Schema not applied or migration failed                       | Run `mother_schema.sql` manually: `sudo -u postgres psql -d mother_hive -f packaging/mother/mother_schema.sql` |
+| SSH hangs / no response                   | `colibri-mcp` not installed or not executable on mother      | `ls -l /usr/local/bin/colibri-mcp` on mother; verify it runs: `colibri-mcp tools \| head -1`                   |
+| Agent gets MCP timeout                    | SSH connection blocked by firewall                           | Verify Tailscale ACLs allow port 22 between the node and mother                                                |
+| Node registers but `capabilities` is `{}` | `derive_capabilities()` trigger missing                      | `SELECT prosrc FROM pg_proc WHERE proname = 'derive_capabilities';` on mother                                  |
+
+### Quick sanity checks
+
+```sh
+# On USB node: can we reach mother at all?
+ssh -i /var/db/colibri/.ssh/mother-mcp colibri@osa tools
+
+# On mother: does the wrapper work locally?
+ssh colibri@localhost tools
+ssh colibri@localhost 'rm -rf /'    # must print "rejected:" and exit 1
+
+# On mother: does peer auth work?
+sudo -u colibri psql -d mother_hive -c "SELECT hostname, status FROM hive_nodes;"
+
+# On mother: is the MCP host serving node_register?
+colibri-mcp tools | grep node_register
+```
+
+## See also
+
+- [mother-hive](./mother-hive.md) — the decisions behind this architecture (why forced-command, why single home, why peer auth, why key-on-seed)
+- [hive-routing](./hive-routing.md) — what the bridge carries: node identity, capabilities, cost-aware task routing
+- [external-mcp](./external-mcp.md) — how `colibri-mcp` hosts external MCP servers (the protocol the bridge plugs into)
+- [MOTHER-SETUP.md](../../packaging/mother/MOTHER-SETUP.md) — step-by-step setup instructions, first-run checklist, verification
+- [cost-model](./cost-model.md) — per-task cost tracking (`report-task-cost` over this bridge)
+- [cost-dashboard](./cost-dashboard.md) — mother-side aggregation of costs pushed through this bridge

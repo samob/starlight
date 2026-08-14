@@ -1,0 +1,96 @@
+---
+type: Agent Harness Reference
+title: "Agent harness: zot & Colibri"
+description: "The zot (agent) + Colibri (control plane) split; autospawn + RPC driver."
+tags: [agent, harness]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-glasspane/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Agent harness: zot & Colibri
+
+← [index](./index.md)
+
+## Architecture
+
+Two binaries with distinct roles:
+
+- **zot** — the agent (model frontend). Go binary; executes tasks, calls
+  providers, emits JSONL events on stdout.
+- **Colibri** — the control plane (supervisor). Rust daemon; observes agents
+  via glasspane, runs the task board, owns cost tracking.
+
+Colibri **observes** zot; it does not embed it. The two communicate through
+the spawner's stdout JSONL contract and, for RPC agents, a piped stdin
+channel.
+
+## AgentKind — single source of per-harness behavior
+
+`AgentKind` (`crates/colibri-daemon/src/socket.rs`) is an enum that resolves
+a binary basename into the canonical CLI args, RPC stdin mode, runtime tag,
+and credentials strategy. Three variants:
+
+| Variant     | Binary basename      | CLI args                                                   | RPC? |
+| ----------- | -------------------- | ---------------------------------------------------------- | :--: |
+| `Zot`       | `zot`                | `rpc --provider deepseek --model deepseek-v4-flash` (#344) | Yes  |
+| `Pi`        | `pi`                 | `--mode json`                                              |  No  |
+| `TestAgent` | `colibri-test-agent` | `--session-id <task_id> --step-ms 10 --hold-secs 1`        |  No  |
+
+Bare `zot rpc` defaults to openai-codex (429 rate limits). The `--provider
+deepseek --model` flags are the #344 fix — they live in `AgentKind::Zot.args()`
+so both the autospawn and per-task spawn paths route correctly.
+
+## Runtimes
+
+Glasspane normalizes events from all harnesses into one taxonomy via
+`AgentRuntime { Pi, Zot, Local }` — see `crates/colibri-glasspane/src/lib.rs`
+(`zot_event_type()` maps zot's event structure onto the standard agent
+lifecycle names).
+
+## Autospawn
+
+When `COLIBRI_AUTOSPAWN=YES`, the daemon spawns an agent at startup so the
+node is immediately ready for task work. The agent binary and arguments are
+configurable:
+
+- `COLIBRI_AUTOSPAWN_BINARY` — defaults to `zot`
+- `COLIBRI_AUTOSPAWN_ARGS` — overrides the CLI args wholesale (zot default:
+  `rpc --provider deepseek --model deepseek-v4-flash`, resolved via `AgentKind`)
+- `COLIBRI_AUTOSPAWN_TASK` — if set, sends a bootstrap prompt over the
+  `RpcSender` to the newly spawned agent
+
+After spawn, the agent is registered in the local SQLite store with
+capabilities detected by `probe_capabilities()` (OS, ollama, llama.cpp,
+blender — see `clawdie-system-probe --capabilities` or the built-in fallback
+in `crates/colibri-daemon/src/socket.rs`). The scheduler can then route
+queued tasks to it.
+
+On restart, stale agent rows from prior sessions are pruned before the
+first scheduler tick (#348), so the scheduler never dispatches to a dead
+agent. The same prune reclaims any tasks those agents held in-flight
+(#351) — set back to `queued` so the next tick can re-dispatch them.
+
+## Where it lives
+
+- Spawn contract, `rpc_stdin`, `RpcSender`: `crates/colibri-daemon/src/spawner.rs`
+- `AgentKind` enum (args, runtime, credentials): `crates/colibri-daemon/src/socket.rs`
+- Autospawn, capability probe, agent registration: `crates/colibri-daemon/src/socket.rs`
+  (`default_agent_args`, `autospawn_agent_if_configured`, `probe_capabilities`)
+- Wire format: [agent-events-reference](./agent-events-reference.md)
+- End-to-end test, zot: `crates/colibri-daemon/tests/zot_rpc_driver.rs`
+  (auto-finds zot in PATH, skips gracefully if absent)
+- End-to-end test, pi: `crates/colibri-daemon/tests/pi_spawn_live.rs`
+  (runs in every `cargo test` via `sample-pi-agent.py`)
+
+## See also
+
+- [task-dispatch-flow](./task-dispatch-flow.md) — the full submit → done chain
+- [naming-decisions](./naming-decisions.md) — harness naming history
+- [hive-routing](./hive-routing.md) — capability-based task dispatch

@@ -1,0 +1,154 @@
+---
+type: Cost Dashboard
+title: "Cost Dashboard"
+description: "Mother-side cost observability — human gallery + agent-friendly JSON, with screenshot proof linked from every cost row."
+tags: [cost, dashboard, observability, hive]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-glasspane-tui/src/main.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+← [index](./index.md)
+
+The Cost Dashboard is the presentation surface for the hive-wide cost data flowing
+into mother's `task_costs` table. It serves two audiences: operators (human gallery)
+and agents (JSON query).
+
+## Decision
+
+One HTML page, two views. The same data feeds both a human-browseable card grid
+(with lightbox screenshot proofs) and an agent-queryable JSON panel. No server-side
+rendering — static HTML with a JSON data file refreshed every 60s by cron.
+
+## What it shows
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ HIVE COST DASHBOARD                                  [4 nodes] [24h] [$2.37] │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  debby  ● online   12 tasks   $1.87   ▲ $0.15 avg   89% success             │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                        │
+│  │ ████░░░░ │ │ ████████ │ │ ██████░░ │ │ ████████ │   ← cost cards        │
+│  │ deepseek │ │ deepseek │ │ claude   │ │ gemini   │                        │
+│  │ $0.0042  │ │ $0.0031  │ │ $0.89 ▸  │ │ $0.02 ▸  │   ▸ = screenshot      │
+│  │    ✓     │ │    ✓     │ │    ✗     │ │    ✓     │                        │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘                        │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+Each cost card shows:
+
+- **Cache-hit bar:** green (cache) vs grey (fresh) — visual cache efficiency
+- **Provider:** deepseek / claude / gemini / ollama / local
+- **Cost:** with `▸ screenshot` badge if visual proof exists, `▸ text` for glasspane evidence
+- **Success:** ✓ (green) or ✗ (red)
+
+Click a card with `▸` → lightbox opens the terminal screenshot at task completion time.
+
+## Data sources
+
+| Source                     | What                                          | Refresh                               |
+| -------------------------- | --------------------------------------------- | ------------------------------------- |
+| `task_costs` (PostgreSQL)  | Per-task cost rows pushed by daemon heartbeat | Real-time (SSH push on completion)    |
+| `hive_nodes` (PostgreSQL)  | Node metadata, capabilities, LLM tier         | Node heartbeat                        |
+| `task_costs JSON file`     | Denormalized JSON for the dashboard page      | Every 60s (cron)                      |
+| `proof_text` (inline JSON) | glasspane state snapshot                      | On task completion (daemon heartbeat) |
+
+## Architecture
+
+```
+daemon heartbeat
+  │
+  ├─ push_cost_to_mother() ──SSH──→ colibri-mcp-ssh "report-task-cost"
+  │                                   │
+  │                                   └─ INSERT INTO task_costs
+  │                                      (node_hostname → node_id lookup)
+  │
+  └─ proof_text (inline)             → glasspane state snapshot (agent, state, tokens, cost JSON)
+
+cron (every 60s)
+  └─ export-costs.sh
+       └─ psql → task_costs JSON file (dashboard data file)
+
+browser
+  └─ GET /dashboard/ → index.html
+       └─ fetch task_costs JSON file → render cards, lightbox, JSON panel
+```
+
+## Deployment
+
+```sh
+# On mother (osa):
+cd /usr/local/src/colibri/packaging/mother/dashboard
+./deploy.sh
+```
+
+This places:
+
+- `/usr/local/www/clawdie/dashboard/index.html` — the dashboard page
+- `export-costs.sh` — JSON export script (in mother webroot)
+- `/usr/local/etc/cron.d/clawdie-dashboard` — cron job (every 60s)
+
+Nginx serves it as a static location under the existing mother vhost.
+
+## Agent-friendly JSON
+
+The dashboard has a **JSON** toggle button that shows the filtered data as
+structured JSON. This is the same data agents get via `colibri_list_task_costs`
+MCP tool, but with screenshot UUIDs and node groupings:
+
+```json
+{
+  "updated_at": "2026-06-27T14:00:00Z",
+  "summary": {
+    "total_tasks": 23,
+    "total_cost": 2.37,
+    "avg_cost": 0.103,
+    "success_rate": 87.0,
+    "cache_hit_ratio": 64.3
+  },
+  "nodes": {
+    "debby": [
+      {
+        "task_id": "abc-123",
+        "provider": "deepseek",
+        "cost": 0.0042,
+        "success": true,
+        "proof_text": "{\"agent\":\"zot\",\"state\":\"Done\",\"tokens_in\":150}",
+        "tokens": {"in": 45000, "out": 2800, "cache_read": 12000}
+      }
+    ]
+  }
+}
+```
+
+Agents use this for cost-aware routing: "debby averages $0.004/task with 89%
+cache-hit on DeepSeek — route non-urgent tasks there."
+
+## Screenshot proof
+
+The `▸ screenshot` badge on cost cards opens a lightbox with the terminal PNG. The `▸ text` badge shows the glasspane state snapshot inline.
+screenshot UUID is stored alongside the cost row. Clicking opens the lightbox
+with:
+
+- The full terminal PNG at task completion time
+- Task ID, provider, and cost in the overlay
+- The screenshot metadata (pane title, command, path, timestamp)
+- Signature detection results (failures, warnings, healthy signals)
+
+This is the "verify, don't guess" layer — every cost number has visual proof
+behind it.
+
+## References
+
+- [task-board](./task-board.md) — local task board (data source for cost capture)
+- [hive-pane](./hive-pane.md) — hive board (companion surface, node status)
+- [hive-routing](./hive-routing.md) — cost-aware routing engine (consumes this data)
+- [screenshot module](../../crates/colibri-daemon/src/screenshot.rs) — auto-capture on task completion

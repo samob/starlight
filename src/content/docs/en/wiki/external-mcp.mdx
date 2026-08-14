@@ -1,0 +1,155 @@
+---
+type: Reference
+title: "External MCP bridge"
+description: "Colibri wiki page: External MCP bridge"
+tags: [external]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-mcp/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# External MCP bridge
+
+← [index](./index.md)
+
+`colibri-mcp` is the Model Context Protocol bridge between Colibri and
+MCP-capable editors (Zed, Cursor, Windsurf, Claude Code). It exposes the
+current daemon state as MCP tools today and acts as a small MCP host for
+arbitrary external stdio MCP servers as a prototype.
+
+## Why MCP?
+
+The daemon already exposes a typed Unix-socket API through
+`crates/colibri-client`. MCP wraps that API into the standard JSON-RPC tool
+protocol that editors already speak. This avoids the maintenance cost and
+political risk of forking or embedding an editor, keeps Colibri headless-safe,
+and lets any MCP-compatible client access the same surface.
+
+For the longer-term product framing, see ../CLAWDIE-STUDIO.md.
+
+## Two roles in one binary
+
+`colibri-mcp` serves as both:
+
+1. **MCP server for Colibri** — presents tools such as `colibri_status`,
+   `colibri_snapshot`, `colibri_list_tasks`, `colibri_create_task`, etc.
+2. **MCP host for external servers** — reads a registry file, spawns configured
+   proc ess servers, and proxies `tools/list` and `tools/call` to them.
+
+Separating these roles would create a second binary for little gain; hosting
+external servers is gated so the default surface stays read-only.
+
+## Daemon socket resolution
+
+The MCP server must reach the daemon. The socket path is resolved in order:
+
+1. `--socket` CLI flag
+2. `COLIBRI_MCP_SOCKET`
+3. `COLIBRI_DAEMON_SOCKET`
+4. `DaemonConfig::from_env().socket_path` (env-driven defaults)
+
+This mirrors how the operator CLI and TUI resolve the same socket.
+
+## Colibri tools and gates
+
+| Tool                    | Default     | Gate                              |
+| ----------------------- | ----------- | --------------------------------- |
+| `colibri_status`        | read-only   | none                              |
+| `colibri_snapshot`      | read-only   | none                              |
+| `colibri_list_tasks`    | read-only   | none                              |
+| `colibri_list_skills`   | read-only   | none                              |
+| `colibri_create_task`   | write-gated | `COLIBRI_MCP_WRITE=1` / `--write` |
+| `colibri_intake_task`   | write-gated | `COLIBRI_MCP_WRITE=1` / `--write` |
+| `colibri_set_cost_mode` | write-gated | `COLIBRI_MCP_WRITE=1` / `--write` |
+
+The default ISO posture is read-only. Mutating commands require the operator to
+opt in explicitly, which prevents an assistant from creating tasks or switching
+cost mode by accident.
+
+## External MCP host
+
+The prototype external-host tools are always exposed but only allow calling an
+external tool when the separate `COLIBRI_MCP_EXTERNAL_CALL=1` / `--external-call`
+flag is set.
+
+### Registry
+
+External servers are configured from a JSON registry. Default path:
+/usr/local/etc/colibri/external-mcp.json. Override with
+`COLIBRI_MCP_EXTERNAL_CONFIG` or `--external-config`.
+
+Each entry declares a command, args, optional env, and optional jail
+confinement:
+
+```json
+{
+  "servers": {
+    "demo": {
+      "command": "/usr/local/bin/demo-mcp-server",
+      "args": ["--stdio"],
+      "env": { "DEMO_MODE": "1" },
+      "jail": { "name": "mcp0", "root_path": "/usr/local/bastille/jails/mcp0/root" }
+    }
+  }
+}
+```
+
+### Confinement
+
+External MCP servers execute arbitrary code on the operator machine, so they
+reuse the same jail primitive as agent spawning:
+`colibri_daemon::spawner::{prepare_spawn_command, jail_wrap, JailConfig, PrivMode}`.
+
+- `jail.name` enters an existing persistent jail via `jexec`.
+- `jail.root_path` creates an ephemeral jail for the duration of the call.
+- Omitting `jail` runs the server on the host, but stdin/stdout framing is the
+  same either way.
+
+The root-only jail step honors the shared `COLIBRI_JAIL_PRIV_MODE` policy (`doas`
+by default — the operator USB included, since its mdo→doas migration).
+See [jail-confinement](./jail-confinement.md).
+
+### Request lifecycle
+
+Every external `tools/list` or `tools/call` request:
+
+1. Spawns a fresh process (`ExternalMcpSession::start`) using the shared spawner.
+2. Runs the MCP `initialize` handshake with protocol version `2024-11-05`.
+3. Sends `tools/list` or `tools/call`, reads the response over newline-delimited
+   JSON, and returns the result.
+4. Kills the child and removes the staged cleanup directory.
+
+This is intentionally simple: one process per request, no connection pool, no
+streaming, no long-lived state. It is good enough for prototyping; a production
+host should add policy, audit logging, secret management, and per-tool
+permissions.
+
+## Why separate `COLIBRI_MCP_WRITE` and `COLIBRI_MCP_EXTERNAL_CALL`
+
+`COLIBRI_MCP_WRITE` gates mutations against the local Colibri daemon. External
+tool calls execute arbitrary third-party binaries and therefore live on a
+different trust surface. Requiring two separate opt-ins makes accidental
+privilege escalation harder.
+
+## Limits and open questions
+
+- stdio transport only
+- one external process per request
+- no server/tool allowlist beyond the registry file
+- no streaming tool results
+- no production secret manager integration
+
+Those limits are recorded as explicitly accepted for now; if the prototype is
+promoted to default ISO behavior, each limit should be addressed.
+
+## See also
+
+- [jail-confinement](./jail-confinement.md) — jail policy reused for external MCP servers
+- [cost-model](./cost-model.md) — cost mode and the write-gated `colibri_set_cost_mode`
+- [skills-catalog](./skills-catalog.md) — read-only skill catalog exposed via `colibri_list_skills`

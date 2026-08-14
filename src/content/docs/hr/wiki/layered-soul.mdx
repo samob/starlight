@@ -1,0 +1,67 @@
+---
+type: Skill Catalog Entry
+title: "Layered Soul integration"
+description: "Colibri wiki page: Layered Soul integration"
+tags: []
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-skills/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Layered Soul integration
+
+← [index](./index.md)
+
+[clawdie/layered-soul](https://code.smilepowered.org/clawdie/layered-soul) is the
+portable, harness-agnostic source of durable identity + reviewed context. This doc
+records how Colibri consumes it **today**, and what is still **planned** — so the
+contract isn't mistaken for fully-built.
+
+## What's wired (works now)
+
+Reviewed **skills** import into Colibri's existing `skills` catalog:
+
+    scripts/import-layered-soul.sh &lt;layered-soul-dir&gt; &lt;colibri.sqlite&gt;
+
+It reads each skills SKILL.md file (frontmatter `name` / `description`; category
+`soul`) and `INSERT OR IGNORE`s a row into the `skills` table. `references/` and
+`templates/` under a skill are supporting material, not separate skills. Same
+table as `clawdie-iso/scripts/import-clawdie-skills.sh`; idempotent, safe to re-run.
+
+## What's deferred (planned, not built)
+
+The the Colibri adapter in layered-soul names a "Layered Memory Fabric" with
+three stores — `system_skills`, `system_brain`, `system_ops`. As of 13.jun.2026
+only a single flat `skills` table exists; the rest is **design only**
+([skills-catalog](./skills-catalog.md)), so the importer intentionally does not target it.
+
+| Layered Soul source             | Target (planned) | Status                                                     |
+| ------------------------------- | ---------------- | ---------------------------------------------------------- |
+| skills SKILL.md files           | `system_skills`  | imported into the flat `skills` table today                |
+| memories/curated markdown files | `system_brain`   | NOT imported — no store yet (the importer reports a count) |
+| converted task/job manifests    | `system_ops`     | NOT implemented                                            |
+
+## Direction (one-way)
+
+`layered-soul` (git) is the **source of truth**; Colibri is a **consumer**.
+Import flows one way (repo → Colibri). Always curate skills in the source repo,
+then re-import — runtime copies are ephemeral consumers.
+
+## Closing the gap (future work)
+
+1. Implement `system_brain` per the planned schema (see
+   [skills-catalog](./skills-catalog.md)), then extend the importer
+   to load curated memories.
+2. Migrate the flat `skills` table to the planned `system_skills` schema.
+3. Define and import `system_ops` task/job manifests.
+
+## See also
+
+- [skills-catalog](./skills-catalog.md) — Colibri's read-only runtime skill consumer
+- [store-schema](./store-schema.md) — planned `system_skills` / `system_brain` tables

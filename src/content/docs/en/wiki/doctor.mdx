@@ -1,0 +1,190 @@
+---
+type: Reference
+title: "`colibri doctor` — self-diagnosis & self-upgrade"
+description: "Colibri wiki page: `colibri doctor` — self-diagnosis & self-upgrade"
+tags: [doctor]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-daemon/src/doctor.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# `colibri doctor` — self-diagnosis & self-upgrade
+
+← [index](./index.md)
+
+**Status:** Shipped (v0.12.0+). 10 checks, two auto-fixable targets, client-side
+`colibri upgrade`. Cross-platform (Linux + FreeBSD, one `#[cfg]` for service restart).
+
+## What it is
+
+`status` is a passive snapshot (counts). `doctor` is a **battery of active
+checks** — each verifies one thing that has to be true for the control plane to
+work, and reports `PASS`/`WARN`/`FAIL`. It's the [task-dispatch-flow](./task-dispatch-flow.md)
+"why won't my task run?" checklist, executable. Scope is **concrete** — check
+only what we actually have, never claim a check we can't back with a data source.
+
+## Check result shape
+
+```rust
+struct CheckResult {
+    check: String,       // e.g. "database", "registration_linkage"
+    status: String,      // "pass" | "warn" | "fail"
+    detail: String,      // human-readable one-liner
+    hint: Option<String>, // optional operator-facing tip (→ displayed)
+    fixable: bool,        // can `colibri doctor --fix` act on it?
+}
+```
+
+`hint` is always displayed as a `→ tip` in table output. `fixable` is the hinge
+between diagnosis and action: only `fixable: true` checks are acted on by
+`--fix`. Today two checks are fixable: `binary_vs_git_version` → `colibri upgrade`,
+`registration_linkage` → `colibri agents prune`.
+
+## Check catalog — all shipped
+
+| Check                                           | What it verifies                                      | fixable                          |
+| ----------------------------------------------- | ----------------------------------------------------- | -------------------------------- |
+| database                                        | Store opens and queries cleanly                       | no                               |
+| providers                                       | At least one cloud provider key set                   | no                               |
+| agents                                          | At least one live agent handle                        | no                               |
+| dispatch_readiness                              | Agents are in RPC mode (can receive tasks)            | no                               |
+| registration_linkage                            | Store agents map to live handles (stale if not)       | **yes** → `colibri agents prune` |
+| model_selection                                 | Phase 3 model selection enabled/disabled              | no                               |
+| local_eval                                      | ollama available for local-llm eval                   | no                               |
+| disk_free                                       | `df -k` on data_dir — &lt;100MiB FAIL, &lt;1GiB WARN        | no                               |
+| binary_vs_git_version                           | Binary version matches git tag at build time          | **yes** → `colibri upgrade`      |
+| doas_nopasswd (FreeBSD) / sudo_nopasswd (Linux) | Passwordless escalation configured for daemon control | no                               |
+| git_behind                                      | Client-side: commits behind origin/main               | no (shown by client, not daemon) |
+
+The daemon emits 10 checks. `git_behind` is client-side only — the client runs
+`git rev-list --count HEAD..origin/main` after fetching. The escalation check
+(`doas_nopasswd` on FreeBSD, `sudo_nopasswd` on Linux) was added after
+real-world testing showed `colibri upgrade` failing mid-flight when the
+escalation tool required a password.
+
+### Explicitly out of scope (no data source)
+
+- **DNS resolution** — daemon has no DNS config; would need a `/etc/resolv.conf`
+  or `host` probe.
+- **TLS/ACME cert expiry** — no cert knowledge in the daemon; an nginx concern.
+- **PostgreSQL health** — not in the colibri installer scope.
+- **Mother reachable** — `ssh colibri@mother` requires key setup that isn't
+  guaranteed on every node.
+
+The doctor never prints a check it can't back. Adding one of these means adding
+its data source first.
+
+## `colibri upgrade` — client-side self-rebuild
+
+The upgrade flow is entirely client-side. The daemon never touches its own binary.
+
+```
+colibri upgrade --check     # just the git-behind count, no build
+colibri upgrade --yes       # git pull → cargo build --release → stop → install → start
+colibri upgrade             # interactive (prompts before build)
+```
+
+Platform restart: `service colibri_daemon restart` (FreeBSD rc.d) vs
+`systemctl restart colibri-daemon` (Linux) — one `#[cfg]` block.
+
+Binary install uses `install(1)` (not `cp`) to avoid `ETXTBSY` ("Text file
+busy") when overwriting the running client binary on FreeBSD.
+
+### Passwordless escalation requirement (doas on FreeBSD, sudo on Linux)
+
+`colibri upgrade` needs passwordless escalation for the daemon stop/install/start
+cycle. The `doas_nopasswd` (FreeBSD) / `sudo_nopasswd` (Linux) check detects this.
+
+The check (and the upgrade pre-flight) probe the **scoped service-status
+command** — `doas -n service colibri_daemon status` (FreeBSD) /
+`sudo -n systemctl status colibri-daemon` (Linux) — not `esc -n true`. The
+installer writes command-limited rules, so a blanket `true` probe would fail
+even on a correctly-configured host.
+
+**Preferred provisioning** — the `clawdie` installer writes the scoped rules for
+you. Run it with the operator account that should control upgrades:
+
+```sh
+clawdie apply --operator-user YOUR_ACCOUNT --yes
+```
+
+**FreeBSD (rc.d + doas)** — the installer appends `permit nopass` rules to
+`/usr/local/etc/doas.conf` for the operator account:
+
+```sh
+# /usr/local/etc/doas.conf
+permit nopass YOUR_ACCOUNT cmd service
+permit nopass YOUR_ACCOUNT cmd install
+```
+
+**Linux (systemd + sudo)** — the installer writes a NOPASSWD drop-in for the
+operator account:
+
+```sh
+# /etc/sudoers.d/colibri
+YOUR_ACCOUNT ALL=(root) NOPASSWD: /usr/bin/systemctl * colibri-daemon
+YOUR_ACCOUNT ALL=(root) NOPASSWD: /usr/bin/install *
+```
+
+The rules are scoped by command, not blanket — `doas` matches by command name
+(`service` covers any service invocation), while sudoers uses arg wildcards.
+
+## `colibri doctor --fix` — two auto-fixable targets
+
+```
+colibri doctor --fix
+```
+
+Runs all checks, then acts on `fixable: true` ones:
+
+1. **`binary_vs_git_version`** → `colibri upgrade` (pull + build + restart).
+   Forces rebuild even when git is at origin/main — the binary can be stale
+   from a pre-tag build.
+2. **`registration_linkage`** → `colibri agents prune` — removes store agents
+   that have no live daemon handle. Stale agents accumulate on every daemon
+   restart because agent IDs are ephemeral.
+
+After fixes, re-runs doctor to show the new state.
+
+## Command surface
+
+```
+colibri doctor              # run all checks, print table with → hints
+colibri doctor --json       # machine-readable (MCP / dashboard)
+colibri doctor --fix        # run checks + act on fixable ones
+colibri upgrade             # interactive self-rebuild
+colibri upgrade --check     # git-behind count only
+colibri upgrade --yes       # non-interactive self-rebuild
+```
+
+## Architecture
+
+| Piece             | Where                                 | Platform           |
+| ----------------- | ------------------------------------- | ------------------ |
+| Checks engine     | `crates/colibri-daemon/src/doctor.rs` | cross-platform     |
+| Client display    | `colibri-client` (`colibri doctor`)   | cross-platform     |
+| Self-upgrade      | `colibri-client` (`colibri upgrade`)  | one `#[cfg]` block |
+| Stale-agent prune | `crates/colibri-daemon/src/daemon.rs` | cross-platform     |
+
+The daemon gets exactly one command: `Doctor` → `Vec<CheckResult>`. The client
+formats it and runs fixes. Upgrade and prune are separate — they compose through
+`--fix`, not through a shared daemon API.
+
+## Hive composition
+
+Each node runs `colibri doctor` locally. Mother queries all nodes with
+`ssh <node> colibri doctor --json` — the SSH keychain + MCP-over-SSH already
+carry arbitrary socket commands.
+
+## See also
+
+- [task-dispatch-flow](./task-dispatch-flow.md) — the stall checklist doctor automates
+- [factory-model](./factory-model.md) — the harness architecture doctor verifies
+- [hive-routing](./hive-routing.md) — per-node identity + capability probes
+- [mother-hive](./mother-hive.md) — the MCP-over-SSH path the hive `--json` query rides

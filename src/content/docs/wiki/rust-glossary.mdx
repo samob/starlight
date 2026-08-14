@@ -1,0 +1,231 @@
+---
+type: Glossary
+title: "Rust glossary — terms in the colibri codebase"
+description: "Quick reference for Rust idioms and crates that appear throughout Colibri's source."
+tags: [glossary, rust]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-daemon/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+← [index](./index.md)
+
+Non-exhaustive glossary of Rust terms and crates you'll meet in the code.
+Assumes the reader is a competent programmer in another language, not a
+Rustacean.
+
+## Serde
+
+**Serde** = **ser**ialization + **de**serialization. The standard Rust
+framework for converting structs to and from text formats (JSON, YAML, TOML,
+bincode, etc.).
+
+Appears as `#[derive(Serialize, Deserialize)]` on structs:
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillChunk {
+    pub skill_id: String,
+    pub artifact_relative_path: String,
+    pub chunk_type: ChunkType,
+    pub content: String,
+}
+```
+
+Without it, you'd write manual to/from code for every type. Serde
+auto-generates it from the field names and types.
+
+Where it shows up:
+
+- `colibri-skills` — every public type (Skill, SkillChunk, ImportSummary)
+- `colibri-ledger` — TaskEval, TaskCost (SQL ↔ Rust)
+- `colibri-contracts` — API types (JSON over the wire)
+
+## `#[derive(...)]`
+
+A **derive macro** — Rust auto-implements traits for a struct based on the
+list. Common ones in Colibri:
+
+| Trait                    | What it does                                       |
+| ------------------------ | -------------------------------------------------- |
+| `Debug`                  | `{:?}` formatting (print structs for debugging)    |
+| `Clone`                  | `.clone()` — deep copy                             |
+| `Default`                | `::default()` — zero-value constructor             |
+| `PartialEq, Eq`          | `==`, `!=` comparison                              |
+| `Serialize, Deserialize` | Serde (see above)                                  |
+| `Error`                  | thiserror — makes a type usable as an error return |
+| `Parser`                 | clap — CLI argument parsing                        |
+
+Example:
+
+```rust
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SkillStatus {
+    #[default]
+    Active,
+    Archived,
+    Superseded,
+}
+```
+
+This one line gives the enum debug printing, cloning, default value (`Active`),
+equality checks, and JSON conversion. Without derives you'd write six
+`impl ... for SkillStatus { ... }` blocks by hand.
+
+## `Result<T>` / `Result<T, E>`
+
+Rust's error-handling type. Every fallible function returns a `Result`:
+
+```rust
+pub fn write_task_eval(&self, te: &TaskEval) -> Result<()>
+```
+
+`Result<()>` is shorthand for `Result<(), Error>` — success returns nothing
+useful (`()`), failure returns an error. The caller must handle the error or
+propagate it with `?`:
+
+```rust
+let store = Store::open(&config.db_path)?;  // propagate error up
+let eval = store.read_task_eval(task_id)?;  // propagate error up
+Ok(())  // explicit "no error"
+```
+
+No exceptions. No null. Errors are value, tracked by the type system.
+
+## `Option<T>`
+
+A value that might be absent. Like `null` but type-safe — you can't use the
+inner value without checking:
+
+```rust
+pub quality_score: Option<f64>,  // might be None if task wasn't verified
+```
+
+Pattern matches:
+
+```rust
+if let Some(score) = eval.quality_score {
+    // use score here
+}
+
+let display = eval.quality_score.unwrap_or(0.0);  // fallback if None
+```
+
+Shows up heavily in `colibri-skills` (optional manifest fields) and SQLite
+rows (nullable columns).
+
+## `Arc<T>`
+
+**Atomic Reference Counted** — a thread-safe shared pointer. When multiple
+threads need to read the same data without copying:
+
+```rust
+Arc<DaemonConfig>
+```
+
+The data lives as long as any `Arc` points to it. Frees automatically when
+the last reference drops. Like `shared_ptr` in C++, but thread-safe.
+
+## `Box<T>`
+
+A heap-allocated value. Used when the size isn't known at compile time, or
+when recursing (a type that contains itself):
+
+```rust
+Box<dyn Provider>  // trait object — any type implementing Provider
+```
+
+The `dyn` keyword means "I don't know the concrete type, but it implements
+this trait." Boxed because trait objects have no fixed size.
+
+## `thiserror` / `#[error(...)]`
+
+The error derive crate. Defines error types with human-readable messages:
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum VaultError {
+    #[error("tenant {0} not found")]
+    TenantNotFound(String),
+    #[error("env file write failed: {0}")]
+    WriteFailed(String),
+}
+```
+
+Integrates with `?` — the error type can be returned from `Result`.
+
+## `clap`
+
+CLI argument parser. `#[derive(Parser)]` turns a struct into a command-line
+interface:
+
+```rust
+#[derive(Parser)]
+pub enum Subcommand {
+    IndexSkills,
+    ListSkills,
+    Search { query: String },
+}
+```
+
+Becomes `colibri index-skills`, `colibri list-skills`, `colibri search <query>`
+with --help auto-generated.
+
+## `tokio`
+
+The async runtime. Colibri's daemon, network code, and JSONL streaming run on
+tokio. `async fn` + `.await` is cooperative multitasking:
+
+```rust
+async fn handle_client(stream: UnixStream) -> Result<()> {
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line).await?;
+    // ...
+}
+```
+
+`.await` yields the thread — it's a "pause here, run other tasks, come back
+when data arrives."
+
+## Common patterns
+
+**Turbofish** `::<T>` — explicit type parameter when Rust can't infer it:
+
+```rust
+serde_json::from_str::<TaskCost>(&json)?
+```
+
+**`?` operator** — propagate errors or unwrap success:
+
+```rust
+let value = function_that_returns_result()?;
+// if Ok, value is the inner; if Err, return early
+```
+
+**`match`** — exhaustive pattern matching:
+
+```rust
+match status {
+    SkillStatus::Active => { /* handle */ }
+    SkillStatus::Archived => { /* handle */ }
+    SkillStatus::Superseded => { /* handle */ }
+}
+```
+
+The compiler requires all cases — missed cases are a compile error, not a
+runtime bug.
+
+## Further reading
+
+The Rust Book: &lt;https://doc.rust-lang.org/book/&gt; (free, covers everything above)
+
+Rust by Example: &lt;https://doc.rust-lang.org/rust-by-example/&gt; (cookbook)
+
+Serde docs: &lt;https://serde.rs/&gt; (derive macros, format support)

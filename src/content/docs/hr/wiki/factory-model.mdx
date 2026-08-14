@@ -1,0 +1,161 @@
+---
+type: Reference
+title: "Factory Model"
+description: "Colibri wiki page: Factory Model"
+tags: [factory, model]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-mcp/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Factory Model
+
+How Colibri maps to the architecture described in Kaggle's
+["New SDLC with Vibe Coding"](https://www.kaggle.com/whitepaper-the-new-SDLC-with-vibe-coding)
+whitepaper (May 2026, Addy Osmani et al.). The paper's central thesis:
+_generation is solved — verification, judgment, and direction are the new craft._
+
+## The factory metaphor
+
+> The developer's primary output is not code — it's the system that produces code.
+> A factory manager designs the assembly line and ensures quality control. The
+> modern developer designs the development system and ensures its output meets
+> the required standard.
+
+Colibri is that factory:
+
+| Factory role     | Colibri component                                                      |
+| ---------------- | ---------------------------------------------------------------------- |
+| Factory manager  | `colibri-daemon` — spawns agents, enforces cost limits, runs scheduler |
+| Assembly line    | `zot` agents — subprocesses that receive tasks via RPC stdin           |
+| Raw materials    | MCP tools — `colibri-mcp` bridge + external stdio servers (see below)  |
+| Quality control  | `task_evals` — self-report (Phase 1) + local LLM (Phase 2)             |
+| Cost accounting  | `task_costs` — per-task token/cost capture, mother dashboard           |
+| Shift supervisor | `colibri doctor` — self-diagnosis, checks battery, suggests fixes      |
+
+## Agent = Model + Harness
+
+> A raw model is not an agent. It becomes one once a harness gives it state,
+> tool execution, feedback loops, and enforceable constraints.
+
+Colibri **is** the harness. What the whitepaper calls "harness engineering"
+is what the daemon does every tick:
+
+| Harness component | Colibri                                                |
+| ----------------- | ------------------------------------------------------ |
+| Instructions      | Project rule files, skill files, system prompts        |
+| Tools             | MCP servers (see [external-mcp](./external-mcp.md))    |
+| Orchestration     | `scheduler.rs` — autospawn, heartbeat, task dispatch   |
+| Guardrails        | `cost_mode` enforcement, model selection constraints   |
+| Observability     | `task_costs`, PostgreSQL dashboard, screenshot capture |
+| Memory            | SQLite coordination store, session JSONL               |
+
+See [agent-harness](./agent-harness.md) for the zot/Colibri split,
+[doctor](./doctor.md) for the self-diagnosis battery, and
+[task-dispatch-flow](./task-dispatch-flow.md) for the end-to-end task path.
+
+## The spectrum: vibe coding → agentic engineering
+
+The whitepaper describes a spectrum, not a binary. Colibri lands firmly on the
+agentic engineering side:
+
+| Dimension              | Vibe coding             | Agentic engineering  | Colibri today                   |
+| ---------------------- | ----------------------- | -------------------- | ------------------------------- |
+| Intent specification   | Casual prompts          | Formal specs, docs   | Task title + description        |
+| Verification           | "Seems to work?"        | Test suites + evals  | Evals (Phase 1+2), no CI gating |
+| Codebase understanding | Minimal                 | Comprehensive review | Agent harness + skills          |
+| Error handling         | Copy-paste errors to AI | Agent self-diagnoses | Eval fallback chain             |
+| Scope                  | Prototypes              | Production systems   | Both (ISO dev + bare-metal)     |
+
+The single biggest differentiator is verification. Colibri has evals but they
+run after task completion — they observe quality, they don't gate it. Closing
+that gap (eval suites as CI precondition) is the most impactful step toward the
+disciplined end of the spectrum.
+
+## Conductor and orchestrator
+
+Two modes of working with AI agents, from the whitepaper:
+
+| Mode             | How Colibri does it                                              |
+| ---------------- | ---------------------------------------------------------------- |
+| **Conductor**    | `zot rpc` — one agent, stdin dispatch, real-time glasspane watch |
+| **Orchestrator** | Kanban board — multi-agent queue, capability-matched dispatch    |
+
+Conductor mode is solid: one zot agent per daemon, RPC dispatch, glasspane
+observation of every turn. Orchestrator mode — where the developer defines
+goals, assigns to multiple agents, and reviews results — is nascent. The Kanban
+system exists but isn't deeply integrated with the scheduler. Multi-agent task
+decomposition and parallel dispatch are planned.
+
+The daemon now self-maintains via `colibri doctor --fix`: stale agents are
+auto-pruned on every `--fix` run, and `colibri upgrade` rebuilds + restarts
+the daemon from source when the binary is stale. See [doctor](./doctor.md).
+
+## Context engineering
+
+> The quality of AI-generated code depends less on clever prompts and more on
+> the quality of the context provided.
+
+The whitepaper identifies six context types. Colibri covers all six:
+
+| Type         | Colibri                                             |
+| ------------ | --------------------------------------------------- |
+| Instructions | `AGENTS.md`, system prompts in spawner config       |
+| Knowledge    | Wiki + guide docs, architecture diagrams            |
+| Memory       | SQLite store, session JSONL, persistent memory      |
+| Examples     | `.agent/skills/` — SKILL.md patterns, code examples |
+| Tools        | MCP servers, `colibri-mcp` tool catalog             |
+| Guardrails   | `cost_mode`, model selection, `COLIBRI_AUTOSPAWN`   |
+
+Colibri's skill system implements the whitepaper's "Agent Skills" pattern
+exactly — lightweight metadata at startup, full instructions loaded on task
+match, deep references pulled only when needed. The `colibri-skills` crate
+with FTS5 search is the catalog. See [skills-catalog](./skills-catalog.md).
+
+## Economics
+
+The whitepaper distinguishes two cost profiles:
+
+- **Vibe coding:** low CapEx (no upfront investment), high OpEx (token burn
+  loops, maintenance tax, security remediation)
+- **Agentic engineering:** high CapEx (harness design, eval suites, guardrails),
+  low OpEx (pre-tested output, structural consistency, automated verification)
+
+Colibri is firmly on the agentic engineering side. The upfront investment lives
+in the daemon, spawner, scheduler, eval harness, and MCP servers. The OpEx
+savings come from cost capture, model selection, context efficiency via skills,
+and the eval pipeline.
+
+The whitepaper's key OpEx metric — first-pass success rate — is not yet tracked
+in Colibri. See [model-selection-and-eval](./model-selection-and-eval.md) for
+the eval harness that will support it.
+
+Per-task costs now carry a `prompt_hash` (#308) — enabling prompt→cost
+correlation across tasks. This is the measurement layer the prefix-caching spec
+(#297) needs to determine whether spawn-time context is byte-stable enough for
+cache hits on the agent path.
+
+## Production agents
+
+> The same vibe coding workflow that produces a script today produces a
+> production agent tomorrow.
+
+Colibri's Clawdie-ISO path embodies this. The operator USB is both a development
+surface and an installer — the same binary (`colibri-daemon`) serves both roles.
+The path from prototype to production is: build → ISO → flash → bare-metal →
+production, without a rewrite or a separate deployment pipeline.
+
+## References
+
+- [Kaggle whitepaper](https://www.kaggle.com/whitepaper-the-new-SDLC-with-vibe-coding)
+- [agent-harness](./agent-harness.md) — zot/Colibri split
+- [task-dispatch-flow](./task-dispatch-flow.md) — end-to-end task path
+- [model-selection-and-eval](./model-selection-and-eval.md) — eval harness + model routing
+- [doctor](./doctor.md) — self-diagnosis battery
+- [cost-model](./cost-model.md) — token economics

@@ -1,0 +1,170 @@
+---
+type: Agent Harness Reference
+title: "Mother hive"
+description: "Mother MCP architecture — forced-command SSH, single-home-in-colibri, peer auth, key-on-seed."
+tags: [hive, mother]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "packaging/mother/MOTHER-SETUP.md"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Mother hive
+
+← [index](./index.md)
+
+## What this is
+
+The mother node (OSA) coordinates USB operator nodes via MCP over SSH →
+PostgreSQL. USB nodes send hardware profiles; mother derives capabilities and
+maintains the hive registry. This page records the **decisions** behind the
+implementation — the rationale the code can't express. For setup instructions,
+architecture diagrams, and the first-run checklist, see
+[`packaging/mother/MOTHER-SETUP.md`](../../packaging/mother/MOTHER-SETUP.md).
+
+## Decisions
+
+### Forced-command SSH boundary (not a listening daemon)
+
+USB nodes reach mother by spawning `ssh colibri@mother` (no remote command).
+On the mother side, `authorized_keys` enforces
+`command="/usr/local/bin/colibri-mcp-ssh",restrict,...` — the connection
+**cannot** run an interactive shell or any command except the wrapper.
+
+The wrapper (`colibri-mcp-ssh`) further allowlists `SSH_ORIGINAL_COMMAND` to
+`""` (stdio MCP mode), `"tools"` (one-shot discovery),
+`"node_register"` (direct hw-profile UPSERT, #325), and
+`"report-task-cost"` (per-task cost push). Every other value is rejected.
+
+**Why not a listening daemon** (HTTP, gRPC, raw TCP): Tailscale encrypts the
+wire, so the SSH layer adds authentication + confinement without extra
+infrastructure (no TLS certs, no auth tokens, no open ports). The forced-command
+boundary is a second lock on top of the SSH key — even a compromised USB that
+holds the key can only invoke the wrapper, and the wrapper only delegates to
+colibri-mcp. Defense in depth, deployed as one OpenSSH feature.
+
+→ [`colibri-mcp-ssh`](../../packaging/mother/colibri-mcp-ssh), [`MOTHER-SETUP.md` §Security](../../packaging/mother/MOTHER-SETUP.md#security-properties)
+
+### Single home for mother infra (colibri, not clawdie-iso)
+
+The mother MCP scripts (`node-register-mcp`, `geodesic-dome-mcp`, etc.) were
+originally copied into both repos. The clawdie-iso copy drifted — its
+`node-register-mcp` used `E'${...}'` string interpolation (SQL-injectable)
+while the colibri copy used parameterized `psql -v :'variable'`. The iso copy
+was removed in clawdie-iso PR #129.
+
+**Lesson**: a script in two repos **will** drift. The wiki lint is single-repo
+and can't see cross-repo duplicates. The mitigation is discipline: mother infra
+lives in one place.
+
+→ [naming-decisions §Structural](./naming-decisions.md#structural-decisions) ("Single home" row)
+
+### `hive_nodes` — not `usb_nodes`
+
+The original table name assumed only USB-booted nodes would register. But a
+node is any host that joins the hive — USB, NVMe, a jail. Renamed to
+`hive_nodes` with a `node_type` column (colibri #161). The `derive_capabilities()`
+trigger is table-agnostic and auto-computes `has_gpu`, `gpu_vendor`,
+`can_run_local_llm`, `has_wifi`, `max_model` on INSERT.
+
+→ [`mother_schema.sql`](../../packaging/mother/mother_schema.sql),
+[naming-decisions](./naming-decisions.md) (`usb_nodes → hive_nodes` row)
+
+### PostgreSQL peer auth (no passwords)
+
+The `colibri` OS user connects to `mother_hive` via peer authentication — the
+kernel attests the Unix user, no password needed. `node-register-mcp` runs as
+this user and inherits the trust. Grants are INSERT, UPDATE, DELETE on
+`hive_nodes` (#330 added DELETE for node decommissioning). No pgpass files, no
+env vars, no credential rotation. The `pg_hba.conf` peer rule must precede any
+catch-all `local all all` line (first-match).
+
+**Why not a password or certificate**: passwords rotate and leak; certificates
+need a CA. Peer auth is built into PostgreSQL on every Unix and works for a
+localhost connection with zero configuration beyond one `pg_hba.conf` line.
+
+→ [`MOTHER-SETUP.md` §Setup step 6](../../packaging/mother/MOTHER-SETUP.md#setup-one-time)
+
+### Key on seed partition, not in the image
+
+The `mother-mcp` private key is placed on the CLAWDIESEED partition, not baked
+into the ISO. The build script has a release guard that **refuses** to bake it
+into a release image. The seed importer (`clawdie-live-seed`) installs it at
+boot time.
+
+**Why**: a release ISO is a downloadable artifact. Baking a private key into it
+would give every downloader access to the mother MCP. The seed partition is a
+separate physical medium that the operator controls. Even without a seed, the
+ISO boots and runs — the daemon's external MCP connection to mother fails
+gracefully (SSH: "config file not found"), and the node operates standalone.
+
+→ [naming-decisions](./naming-decisions.md) ("Known residue"), clawdie-iso #133
+
+### Daemon user, not operator
+
+The colibri daemon runs as the `colibri` user (`/var/db/colibri`), not as the
+operator (`clawdie`, `/home/clawdie`). The external MCP SSH connection to mother
+is spawned by the daemon — so the SSH key, config, and known_hosts must be in
+the daemon's home. The seed importer installs SSH material to **both** homes
+(operator + daemon).
+
+**Why not just put it in clawdie's home and `sudo`**: the daemon is not the
+operator. Running as a separate user means the blast radius of a daemon
+compromise is limited to what the `colibri` user can do — MCP calls to mother,
+not operator files or `sudo`.
+
+→ [`clawdie-live-seed` (clawdie-iso)](https://code.smilepowered.org/clawdie/clawdie-iso/src/branch/main/live/operator-session/clawdie-live-seed),
+[`MOTHER-SETUP.md` §Key management](../../packaging/mother/MOTHER-SETUP.md#key-management)
+
+### Per-task cost aggregation (`task_costs`)
+
+When an agent finishes, the daemon's heartbeat captures a `TaskCostSummary` to
+the local SQLite store and also pushes it to mother via `ssh mother
+report-task-cost`. The mother resolves the sending node's hostname to a
+`hive_nodes.id` and INSERTs into `task_costs`.
+
+**Why push, not pull**: a pull model requires mother to SSH into every node
+periodically (N connections, node firewalls, scheduling). Push reuses the
+node's existing outbound SSH to mother — one connection per heartbeat tick,
+fire-and-forget. Nodes that lose connectivity queue locally (SQLite) and resume
+pushing when the link returns.
+
+**Why a separate table, not `hive_nodes` columns**: costs are per-task,
+time-series data. Storing them as cumulative counters on `hive_nodes` would
+lose per-provider, per-model, and per-time-slice detail. `task_costs` keeps
+one row per task completion — the dashboard can aggregate by any dimension.
+
+**Why `node_hostname` in the payload, not `node_id`**: the daemon only knows
+its own hostname, not the mother-assigned `hive_nodes.id`. The mother resolves
+it via a subquery. If the node hasn't registered yet, the INSERT fails on the
+FK — correct behaviour (register first, then report costs).
+
+→ [`mother_schema.sql`](../../packaging/mother/mother_schema.sql) (task_costs DDL),
+[`colibri-mcp-ssh`](../../packaging/mother/colibri-mcp-ssh) (`report-task-cost` case),
+[`daemon.rs`](../../crates/colibri-daemon/src/daemon.rs) (`push_cost_to_mother`)
+
+### Node lifecycle (#330)
+
+Registration is an UPSERT on `hostname` — a node re-registering updates its
+row without creating duplicates. Decommissioning is a DELETE by hostname (#330
+added the DELETE grant). The `colibri` database user holds INSERT, UPDATE, and
+DELETE on `hive_nodes`; `node-register-mcp` handles UPSERT, while DELETE is an
+operator-side operation (it cannot be invoked over the SSH bridge).
+
+A committed e2e test validates the full path:
+`clawdie-system-probe → ssh mother node_register → node-register-mcp →
+PostgreSQL`, including the `derive_capabilities()` trigger output.
+
+→ [`node-register-e2e.sh`](../../packaging/mother/node-register-e2e.sh),
+[`node-register-mcp`](../../packaging/mother/node-register-mcp)
+
+## See also
+
+- [agent-harness](./agent-harness.md) — the zot/Colibri split; autospawn
+- [naming-decisions](./naming-decisions.md) — `usb_nodes → hive_nodes`, autospawn flag rename
+- [quality-gates](./quality-gates.md) — the gate that should catch drift at PR time

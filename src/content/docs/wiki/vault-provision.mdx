@@ -1,0 +1,179 @@
+---
+type: Operational Procedure
+title: "Vault provision"
+description: "Colibri wiki page: Vault provision"
+tags: [vault]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-vault/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Vault provision
+
+← [index](./index.md)
+
+`colibri-vault` fetches secrets from a Vaultwarden collection and writes them
+into a freshly created jail as `0600` env-file. It is invoked as a post-spawn
+hook from the daemon, not by a human operator at provision time. The human step
+is registering a tenant mapping; the daemon does the secret fetch.
+
+→ `crates/colibri-vault/src/lib.rs`
+
+→ `crates/colibri-daemon/src/daemon.rs` (`provision_tenant_env`)
+
+→ `docs/VAULT-PROVISION-RUNBOOK.md`
+
+## Decisions
+
+### Tenant = jail name = Vaultwarden collection
+
+The `tenants` table stores a 1:1:1 map:
+
+- `tenant_id` — the jail name.
+- `jail_root_path` — the host-visible root of the jail.
+- `collection_id` — the Vaultwarden collection name (kept equal to the jail name).
+
+This means `colibri-vault` does not need a separate lookup table or configuration
+file. It finds the collection by the jail name and knows the destination path
+from the tenant row.
+
+→ [store-schema](./store-schema.md)
+
+### Provisioning is a post-spawn hook, not a separate command
+
+When the daemon spawns an agent with both `--jail-name` and `--jail-root`, it
+calls `provision_tenant_env` after the jail is up. If the jail name has no
+matching tenant row, the hook no-ops. If the provision fails, the agent still
+starts, because a missing secret file should not leave the host with stale
+partial jails. The daemon logs the failure.
+
+→ `crates/colibri-daemon/src/socket.rs` (`jail_provision_target`)
+
+### Fail-soft on missing tenant or vault error
+
+The hook returns early (and silently) when:
+
+- no tenant row matches the jail name;
+- the stored `jail_root_path` does not match the spawned root; or
+- the vault call fails.
+
+These are warnings, not hard errors. The spawn itself succeeds. This reflects the
+operational reality that secret tooling may be unavailable during boot or
+experimental spawns, while the agent process should still be observable.
+
+### Path containment before any write
+
+`colibri-vault::provision` canonicalizes the target directory and asserts it is
+strictly under the configured jail-root base (`/usr/local/bastille/jails` by
+default, overridable with `COLIBRI_JAIL_ROOT_BASE`). The check runs before
+`create_dir_all`, so a symlink or `..` path that escapes the jails tree results
+in `TargetEscapesRoot` before any file is created.
+
+This is the same filesystem containment primitive reused by the external MCP
+server spawner.
+
+→ [jail-confinement](./jail-confinement.md)
+
+### Wrap the official `bw` CLI
+
+We do not speak the Vaultwarden REST protocol directly. `colibri-vault` shells
+out to the official `bw` CLI. This keeps authentication, session management, and
+crypto off our plate.
+
+The `bw` lifecycle is serialized across the process with a static `Mutex` because
+`bw` keeps global state (one configured server and one session token per
+process). Concurrent provisions would otherwise race on `bw config server` or
+tear down each other's session.
+
+### Bootstrap creds come from the daemon environment
+
+The daemon is expected to receive three variables from the operator-provided
+provider environment file:
+
+- `BW_CLIENTID`
+- `BW_CLIENTSECRET`
+- `BW_PASSWORD`
+
+Optional:
+
+- `BW_SERVER` — the Vaultwarden host.
+- `COLIBRI_JAIL_ROOT_BASE` — base path used for containment checks.
+
+The CLI never sees these values; it only registers the tenant row that triggers
+the hook.
+
+→ [operator-cli](./operator-cli.md)
+
+### Server-mismatch is fail-closed
+
+If `BW_SERVER` is set and `bw` is already logged in to a different server,
+`provision` returns `ServerMismatch`. We do not wipe state automatically because
+cross-server confusion could leak credentials. An operator must `bw logout` if
+they want to switch servers.
+
+### Env-file content from login items and secure notes
+
+Each Vaultwarden collection item becomes one or more `KEY=VALUE` lines:
+
+- **Login item**: `item.name` becomes the key, `login.password` becomes the value.
+- **Secure note**: each line is parsed as `KEY=VALUE` from the note body.
+
+Keys are validated to `[A-Z0-9_]` after normalizing spaces, dashes, and dots
+to underscores. Invalid keys are skipped with a warning.
+
+Note: a key collision between two items produces a duplicate line. The consumer
+is expected to ignore duplicates or define items accordingly.
+
+### File mode and atomic-ish placement
+
+The env file is written into the target directory and set to mode `0600`. The
+target directory is created if it does not exist, but it must already resolve
+under the jail-root base. The write is a single `std::fs::write`, then a
+permission change; it is not atomic-swap. If the daemon crashes between the
+write and the `chmod`, the file could momentarily have looser permissions. For
+now, we accept this because the daemon has the directory created immediately
+before the write and the target is inside the jail.
+
+### Tenant status follows the provision state
+
+`register_tenant` inserts the row with `status = provisioned`. After a successful
+vault provision, the hook flips it to `active`. A stopped or destroyed jail may
+later be moved to `stopped` or `destroyed` by the operator or a teardown flow.
+
+Strictly, `provisioned` means the row is created; `active` means the secrets
+have been materialized at least once.
+
+## Flow
+
+```text
+register-tenant tenant_id jail_root collection_id
+        |
+        v
+spawn-agent --jail-name tenant_id --jail-root jail_root
+        |
+        v
+provision_tenant_env(tenant_id, jail_root)
+        |-- no tenant row -> no-op
+        |-- root mismatch -> warn, no-op
+        |-- else
+                v
+        bw login -> unlock -> list collection -> list items -> write env file @ 0600
+                |
+                v
+        set tenant status = active
+        agent starts running
+```
+
+## See also
+
+- [store-schema](./store-schema.md) — how the tenant row is stored
+- [jail-confinement](./jail-confinement.md) — how jails are created and confined
+- [operator-cli](./operator-cli.md) — `register-tenant` and `spawn-agent` verbs
+- [mother-hive](./mother-hive.md) — a related Vaultwarden-backed pubkey exchange
+  used to authorize agents to call mother

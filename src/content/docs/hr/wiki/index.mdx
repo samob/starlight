@@ -1,85 +1,99 @@
 ---
 title: Colibri Wiki
-description: Knowledge base for Colibri's decisions, architecture, and operations
+okf_version: "0.2"
+okf:
+  source_of_truth: "docs/README.md"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
 ---
 
-Baza znanja za Colibri **odluke i arhitekturu** — temelji na [LLM Wiki uzorku](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) Andreja Karpathya.
+# Colibri Wiki
 
-Svaki glavni podsustav ima stranicu koja beleži, zašto je izgrađen na takav način — razlog koji kod sama ne može izraziti. Implementacijska dokumentacija u `docs/` pokriva kako; ove stranice pokrivaju zašto.
+A knowledge base for Colibri's **decisions and architecture** — based on
+Andrej Karpathy's
+[LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
 
-## Zašto to postoji
+Every major subsystem has a page recording **why** it was built the way it
+was — the rationale the code can't express. Implementation docs in `docs/`
+cover the _how_; these pages cover the _why_.
 
-Zastarjele odluke nahajaju se brže nego ih tko ručno pregleda: preimenovanje koje je bilo samo djelomično primijenjeno, dokumentacija koja i dalje opisuje staru arhitekturu, zadanu postavku koja je ostala poslije poništene odluke. Nekoliko nedavnih pregleda je to u potpunosti otkrilo (`pi → zot`, `usb_nodes → hive_nodes`, preimenovanje u `sample`). Ova wiki omogućuje knjigovodstvo gotovo bez troškova: jedno mjesto koje beleži _što je odlučeno_, povezuje s _gdje to živi u kodu_, i može se **provjeriti (lint)** za odstupanja.
+## Why this exists
 
-## Konvencije (shema)
+Stale decisions accumulate faster than anyone hand-audits them: a rename that
+was only half-applied, a doc that still describes the old design, a default
+left over from a superseded choice. Several recent passes were spent finding
+exactly that (`pi → zot`, `usb_nodes → hive_nodes`, rename to `sample`). This wiki
+makes the bookkeeping near-zero-cost: one place that records _what was decided_,
+links to _where it lives in code_, and can be **linted** for drift.
 
-Ova pravila čuvaju wiki kao održiv artefakt, ne kao drugi izvor istine:
+## Conventions (the schema)
 
-1. **Kod je izvor istine.** Stranice opisuju _odluke_ i _gdje_ one žive; one se pozivaju na kod/dokumentaciju umjesto da ponavljaju implementaciju. Kada se odluka isporuči, skrati nju na "kako radi + poveznica."
-2. **Povezuj, ne dupliciraj.** Pozovi se na kod kao `path/to/file.rs:line` i druge wiki stranice s relativnim poveznicama (`[label](./page.md)`) — Forge-klikljive, ekvivalent Obsidian `[[wikilinks]]` prilagođen repozitoriju.
-3. **Jedna odluka po stranici** tamo gdje je praktično; unakrsno povezuji slobodno.
-4. **Upozori, ne prepiši tiho.** Kada novi kod protivi stranici, upozori na proturječnost (i riješi je) umjesto da tiho uređuješ povijest.
-5. **Provjeravaj (lint), ne povjeruj.** Stranica je tvrdnja koja se provjerava prema kodu, ne jamstvo.
+These rules keep the wiki a maintainable artifact, not a second source of truth:
 
-## Radni tok provjere (lint)
+1. **Code is the source of truth.** Pages describe _decisions_ and _where_ they
+   live; they link to code/docs rather than re-explaining implementation. When a
+   decision ships, slim its page to "how it works + link."
+2. **Link, don't duplicate.** Reference code as `path/to/file.rs:line` and other
+   wiki pages with relative links (`[label](./page.md)`) — Forge-clickable, the
+   equivalent of Obsidian `[[wikilinks]]` adapted to a repo.
+3. **One decision per page** where practical; cross-link liberally.
+4. **Flag, don't silently overwrite.** When new code contradicts a page, note
+   the contradiction (and resolve it) rather than quietly editing history.
+5. **Lint, don't trust.** A page is a claim to be checked against code, not a
+   guarantee.
+
+## Lint workflow
 
 Skripta [`wiki-lint`](https://code.smilepowered.org/clawdie/colibri/src/commit/f7f0e44fd24d1d18c68eaf4b4e96860460d4cf4b/scripts/wiki-lint) provjerava svaku stranicu prema trenutnom kodu: viseće reference, oživljena stara imena (iz evidencije preimenovanja), i osamljene stranice. Pokreće se kao dio `ci-checks.sh --strict` i je zaključana s pre-push hookom — greška pri odstupanju blokira push, isto kao clippy upozorenje.
 
-## Stranice
+## Pages
 
-| Stranica | Što pokriva |
-|----------|-------------|
-| [agent-harness](./agent-harness.md) | Podjela zot (agent) + Colibri (control plane); autospawn + RPC driver |
-| [task-dispatch-flow](./task-dispatch-flow.md) | Konačni put zadatka: u redu → preuzeta → spawn → registracija → dispatch → trošak; zašto zadatak zaklene |
-| [factory-model](./factory-model.md) | Kako Colibri preslikava u "factory model" arhitekturu — harness, spekter, conductor/orchestrator, ekonomija |
-| [doctor](./doctor.md) | `colibri doctor` samodiagnostika (provjeri bateriju) + `colibri upgrade` samoponovna gradnja; cross-platform build split |
-| [agent-events-reference](./agent-events-reference.md) | Referenca događaja zot na harness, preslikavanja Glasspane, i verificirani transkripti |
-| [cost-model](./cost-model.md) | Byte-stable predpone, mjerenje cache-hit, automatsko eskaliranje, T14 kompakcija |
-| [deepseek-pricing](./deepseek-pricing.md) | Cjenik DeepSeek V4 po žetonima — redovni + peak-valley stope, UTC + Ljubljanski vremenski prozori |
-| [glm-pricing](./glm-pricing.md) | GLM-5 serija cjenik po žetonima (z.ai GLM Coding Plan) — GLM-5.2 flagship + GLM-5-Turbo; bez peak-valley mehanizma |
-| [tokenomics](./tokenomics.md) | Tri troškovne paralele — (valley), predmemorija (prefix), proračun (cost modes); zemljovid koji ih povezuje |
-| [glasspane](./glasspane.md) | Stanja agenata, JSONL streaming, AgentRuntime taksonomija, snapshot API |
-| [operator-attention](./operator-attention.md) | Izvedeni pogled "treba operator": attention predicate, TUI bar/jump/filter, edge-triggered terminal alerts |
-| [headroom-sidecar](./headroom-sidecar.md) | Opcijski stikalnik kompresije rezultata alata i njegov Unix-socket protokol |
-| [jail-confinement](./jail-confinement.md) | Trajni vs. efemer jails, priv-mode policy, ponovna upotreba zatvora spawner za MCP poslužitelje |
-| [mother-hive](./mother-hive.md) | Mother MCP arhitektura — forced-command SSH, single-home-in-colibri, peer auth, key-on-seed |
-| [ssh-bridge](./ssh-bridge.md) | Tok poziva SSH forced-command bridge — USB→mother JSON-RPC transport, sigurnosni model, uklanjanje grešaka |
-| [abbreviations](./abbreviations.md) | Proširenja akronima i tehničkih termina — dodaj nove kako se pojave |
-| [hive-routing](./hive-routing.md) | Identitet člana hive (machine UUID), matrica sposobnosti + lokalni LLM testovi, cost-aware usmjeravanje zadataka |
-| [hive-pane](./hive-pane.md) | Glasspane za hive — multi-node cost observability, A2A otkrivanje, i operator board |
-| [cost-dashboard](./cost-dashboard.md) | Mother-side cost observability — human gallery + JSON, screenshot dokaz povezan iz redaka troškova |
-| [a2a-complexity-audit](./a2a-complexity-audit.md) | Utjecaj kompleksnosti A2A koda — 6-protokolni audit, kada se A2A isplati |
-| [model-selection-and-eval](./model-selection-and-eval.md) | Eval harness + eval-driven model selection — Faze 1–3 isporučene, Faza 4 (cloud eval) planirana |
-| [naming-decisions](./naming-decisions.md) | Evidencija harness-neutral / arhitektura preimenovanja — isporučena i u tijeku |
-| [daemon-not-demon](./daemon-not-demon.md) | Zašto kažemo daemon (pomoćnik) ne demon (zli duh) — engleski + slovenski |
-| [layered-soul](./layered-soul.md) | Kako Colibri koristi layered-soul reviewed-context repo danas vs planirano |
-| [task-board](./task-board.md) | Capability match scoring, cron scheduling, intake drain, SQLite backing |
-| [pull-requests](./pull-requests.md) | PR radni tok — grananje, pregled, vrata, merge konvencije |
-| [quality-gates](./quality-gates.md) | `ci-checks.sh` kao pre-merge vrata; zašto je drift stigao na `main` prije toga |
-| [verify-before-execute](./verify-before-execute.md) | Provjeri u ciljnom kontekstu, prikaži greške — xkbcomp borrowed-tool lekcija, chroot pattern, TUI/GUI aplikacija |
-| [contracts](./contracts.md) | Stabilne JSON sheme (run-manifest, runtime-inventory, provider-test), fixture testovi |
-| [store-schema](./store-schema.md) | SQLite koordinacijska shema i migracijska disciplina |
-| [external-mcp](./external-mcp.md) | MCP bridge za uređivače + external stdio MCP host; read/write/external-call vrata |
-| [operator-cli](./operator-cli.md) | `colibri` CLI kao tanki tipizirani Unix-socket klijent preko daemon API |
-| [tui](./tui.md) | Terminal dashboard klijent (colibri-tui) vs colibri-glasspane stanjski stroj |
-| [terminal](./terminal.md) | Odluka terminal capability (Kitty, extended-key reporting, tmux passthrough, SSH terminfo) |
-| [tmux-safety](./tmux-safety.md) | Zašto Colibri mora spriječiti da agenti ubi host tmux poslužitelj — dvoslojna obrana, skill, jail confinement |
-| [runtime-inventory](./runtime-inventory.md) | Host runtime inventory + watchdog status reader; aditivne, read-only integracije |
-| [skills-catalog](./skills-catalog.md) | Read-only runtime consumer za pregledane skill artefakte |
-| [vault-provision](./vault-provision.md) | Vaultwarden-driven env-file provisioning u jails poslije agent spawn |
-| [deployment](./deployment.md) | Host installer (clawdie): ZFS layout, rc.d/systemd service, dry-run safety |
-| [ts-legacy](./ts-legacy.md) | Umirovljena clawdie-ai TypeScript koda — što je radila, što je preživjelo u colibri/hermes-bsd, što je uklonjeno |
-| [rust-glossary](./rust-glossary.md) | Brzi reference za Rust termine u codebase: serde, Result/Option, Arc/Box, derive makro |
-| [bare-metal-freebsd](./bare-metal-freebsd.md) | FreeBSD na fizičkoj napravi (HP ML350p) — iLO, IPMI, USB boot posebnosti, senzor monitoring rupe |
-| [updating-a-node](./updating-a-node.md) | Base vs packages: freebsd-update na release hostima, pkg upgrade na pkgbase hostima, boot environments, zašto nikad miješati |
-| [forge-ops](./forge-ops.md) | Forge VPS (code.smilepowered.org): topologija, two-artifact backup contract, one-major-hop upgrades, repo-archive trap, jail-restore project |
-| [llama-cpp](./llama-cpp.md) | Lokalni LLM inference s llama.cpp — install, odabir modela, DeepSeek distills, memory reality, hive integracija |
-| [llama-cpp-benchmarks](./llama-cpp-benchmarks.md) | Izmjereno 8B vs 14B na valhala (Xeon E5-2620) — tok/s, prompt speed, coexistence, router tier recommendations |
-
-## OKF (Open Knowledge Format)
-
-Vidi [Google OKF (Open Knowledge Format)](./okf.md) za to kako su wiki stranice strojno opremljene s trust tiers, stale_after datumima i provenience.
-
-## Abbreviations Index
-
-Vidi [Abbreviations Index](./abbreviations.md) za automatski generiran akronimski glosar koji se koristi kroz sve wiki stranice.
+| Page                                                      | What it covers                                                                                                                                 |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| [agent-harness](./agent-harness.md)                       | The zot (agent) + Colibri (control plane) split; autospawn + RPC driver                                                                        |
+| [task-dispatch-flow](./task-dispatch-flow.md)             | End-to-end task path: queued → claimed → spawn → register → dispatch → cost; why a task stalls                                                 |
+| [factory-model](./factory-model.md)                       | How Colibri maps to the \"factory model\" architecture — harness, spectrum, conductor/orchestrator, economics                                  |
+| [doctor](./doctor.md)                                     | `colibri doctor` self-diagnosis (check battery) + `colibri upgrade` self-rebuild; cross-platform build split                                   |
+| [agent-events-reference](./agent-events-reference.md)     | Per-harness zot event reference, Glasspane mappings, and verified transcript fields                                                            |
+| [cost-model](./cost-model.md)                             | Byte-stable prefixes, cache-hit metering, auto-escalation, T14 compaction                                                                      |
+| [deepseek-pricing](./deepseek-pricing.md)                 | DeepSeek V4 per-token pricing — regular + peak-valley rates, UTC + Ljubljana timezone windows                                                  |
+| [glm-pricing](./glm-pricing.md)                           | GLM-5 series per-token pricing (z.ai GLM Coding Plan) — GLM-5.2 flagship + GLM-5-Turbo; no peak-valley mechanism                               |
+| [tokenomics](./tokenomics.md)                             | The three cost levers — timing (valley), caching (prefix), budget (cost modes); the map that links the detail pages                            |
+| [glasspane](./glasspane.md)                               | Agent state machine, JSONL streaming, AgentRuntime taxonomy, snapshot API                                                                      |
+| [operator-attention](./operator-attention.md)             | The derived "needs the operator" view: attention predicate, TUI bar/jump/filter, edge-triggered terminal alerts                                |
+| [headroom-sidecar](./headroom-sidecar.md)                 | Optional tool-result compression sidecar and its Unix-socket protocol                                                                          |
+| [jail-confinement](./jail-confinement.md)                 | Persistent vs ephemeral jails, priv-mode policy, reuse of spawner confinement for MCP servers                                                  |
+| [mother-hive](./mother-hive.md)                           | Mother MCP architecture — forced-command SSH, single-home-in-colibri, peer auth, key-on-seed                                                   |
+| [ssh-bridge](./ssh-bridge.md)                             | SSH forced-command bridge call flow — USB→mother JSON-RPC transport, security model, troubleshooting                                           |
+| [abbreviations](./abbreviations.md)                       | Expansions for acronyms and technical terms — add new ones as they appear                                                                      |
+| [hive-routing](./hive-routing.md)                         | Hive member identity (machine UUID), capability matrix + local LLM probes, cost-aware task routing                                             |
+| [hive-pane](./hive-pane.md)                               | Glasspane for the hive — multi-node cost observability, A2A discovery, and operator board                                                      |
+| [cost-dashboard](./cost-dashboard.md)                     | Mother-side cost observability — human gallery + JSON, screenshot proof linked from cost rows                                                  |
+| [a2a-complexity-audit](./a2a-complexity-audit.md)         | A2A code complexity impact — 6-protocol surface audit, when A2A pays off                                                                       |
+| [model-selection-and-eval](./model-selection-and-eval.md) | Eval harness + eval-driven model selection — Phases 1–3 shipped, Phase 4 (cloud eval) planned                                                  |
+| [naming-decisions](./naming-decisions.md)                 | Ledger of harness-neutral / architecture renames — shipped and in-flight                                                                       |
+| [daemon-not-demon](./daemon-not-demon.md)                 | Why we say daemon (helper spirit) not demon (bad spirit) — English + Slovenian                                                                 |
+| [layered-soul](./layered-soul.md)                         | How Colibri consumes the layered-soul reviewed-context repo today vs planned                                                                   |
+| [task-board](./task-board.md)                             | Capability match scoring, cron scheduling, intake drain, SQLite backing                                                                        |
+| [pull-requests](./pull-requests.md)                       | PR workflow — branching, review, gates, merge conventions                                                                                      |
+| [quality-gates](./quality-gates.md)                       | `ci-checks.sh` as the pre-merge gate; why drift reached `main` before                                                                          |
+| [verify-before-execute](./verify-before-execute.md)       | Verify in the target context, surface failures — the xkbcomp borrowed-tool lesson, the chroot pattern, TUI/GUI application                     |
+| [contracts](./contracts.md)                               | Stable JSON schemas (run-manifest, runtime-inventory, provider-test), fixture tests                                                            |
+| [store-schema](./store-schema.md)                         | SQLite coordination schema and migration discipline                                                                                            |
+| [external-mcp](./external-mcp.md)                         | MCP bridge for editors + external stdio MCP host; read/write/external-call gates                                                               |
+| [operator-cli](./operator-cli.md)                         | The `colibri` CLI as a thin typed Unix-socket client over the daemon API                                                                       |
+| [tui](./tui.md)                                           | Terminal dashboard client (colibri-tui) vs the colibri-glasspane state machine                                                                 |
+| [terminal](./terminal.md)                                 | Terminal capability decision (Kitty, extended-key reporting, tmux passthrough, SSH terminfo)                                                   |
+| [tmux-safety](./tmux-safety.md)                           | Why Colibri must prevent agents from killing the host tmux server — two-layer defense, skill, jail confinement                                 |
+| [runtime-inventory](./runtime-inventory.md)               | Host runtime inventory + watchdog status reader; additive, read-only integrations                                                              |
+| [skills-catalog](./skills-catalog.md)                     | Read-only runtime consumer for reviewed skill artifacts                                                                                        |
+| [vault-provision](./vault-provision.md)                   | Vaultwarden-driven env-file provisioning into jails after agent spawn                                                                          |
+| [deployment](./deployment.md)                             | Host installer (clawdie): ZFS layout, rc.d/systemd service, dry-run safety                                                                     |
+| [ts-legacy](./ts-legacy.md)                               | Retired clawdie-ai TypeScript codebase — what it did, what survived into colibri/hermes-bsd, what was dropped                                  |
+| [rust-glossary](./rust-glossary.md)                       | Quick reference for Rust terms in the codebase: serde, Result/Option, Arc/Box, derive macros                                                   |
+| [ts-legacy](./ts-legacy.md)                               | Retired clawdie-ai TypeScript codebase — what it did, what survived into colibri/hermes-bsd, what was dropped                                  |
+| [bare-metal-freebsd](./bare-metal-freebsd.md)             | FreeBSD on physical hardware (HP ML350p) — iLO, IPMI, USB boot quirks, sensor monitoring gaps                                                  |
+| [updating-a-node](./updating-a-node.md)                   | Base vs packages: freebsd-update on release hosts, pkg upgrade on pkgbase hosts, boot environments, why never to mix                           |
+| [forge-ops](./forge-ops.md)                               | The forge VPS (code.smilepowered.org): topology, two-artifact backup contract, one-major-hop upgrades, repo-archive trap, jail-restore project |
+| [llama-cpp](./llama-cpp.md)                               | Local LLM inference with llama.cpp — install, model selection, DeepSeek distills, memory reality, hive integration                             |
+| [llama-cpp-benchmarks](./llama-cpp-benchmarks.md)         | Measured 8B vs 14B on valhala (Xeon E5-2620) — tok/s, prompt speed, coexistence, router tier recommendations                                   |

@@ -1,0 +1,114 @@
+---
+type: Cost Model
+title: "GLM pricing — GLM-5.2 vs GLM-5-Turbo"
+description: "GLM-5 series per-token pricing (z.ai GLM Coding Plan) — GLM-5.2 flagship + GLM-5-Turbo; no peak-valley mechanism."
+tags: [pricing, glm]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-deepseek/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# GLM pricing — GLM-5.2 vs GLM-5-Turbo
+
+← [index](./index.md) | → [cost-model](./cost-model.md) | → [deepseek-pricing](./deepseek-pricing.md)
+
+## What this is
+
+Per-token pricing and capability reference for z.ai's GLM-5 series models as
+shipped via the GLM Coding Plan (same plan that backs zread MCP). Covers
+GLM-5.2 (flagship) and GLM-5-Turbo (speed variant). The table below is the
+single source of truth for cost prediction when routing tasks to ZAI models.
+
+Not to be confused with the DeepSeek pricing page — different provider,
+different pricing model (no peak-valley mechanism here).
+
+## Pricing table
+
+All prices in USD per 1M tokens. No cache-hit discount (z.ai does not expose
+per-request cache-hit/miss splits in the same way DeepSeek does).
+
+### GLM-5.2
+
+| Role           | Flagship reasoning model, 753B total / 40B active MoE |
+| -------------- | ----------------------------------------------------- |
+| Context window | 1M tokens                                             |
+| Speed          | 173 tok/s, TTFT 1.47s                                 |
+| Input          | $1.40                                                 |
+| Output         | $4.40                                                 |
+
+### GLM-5-Turbo
+
+| Role           | Speed/cost-optimized variant of the GLM-5 family    |
+| -------------- | --------------------------------------------------- |
+| Context window | 200k tokens                                         |
+| Speed          | Faster (quantitative figure pending from z.ai docs) |
+| Input          | $1.20                                               |
+| Output         | $4.00                                               |
+
+## The real tradeoff: context + depth, not price
+
+Turbo is only ~9–14% cheaper per token than 5.2. The decision between them
+is driven by:
+
+| Criterion        | Pick GLM-5.2          | Pick GLM-5-Turbo            |
+| ---------------- | --------------------- | --------------------------- |
+| Context length   | Need 200k–1M tokens   | Under 200k is fine          |
+| Task complexity  | Deep multi-step SWE   | Routine coding / chat       |
+| Agent mode       | long-horizon agents   | Interactive loops, high QPS |
+| Latency budget   | Tolerant (1.47s TTFT) | Need snappier response      |
+| Cost sensitivity | Secondary concern     | Marginal savings (~9–14%)   |
+
+For Colibri's cost-mode routing, the meaningful comparison is **not** turbo vs
+5.2 — it's **either GLM vs DeepSeek**. DeepSeek V4 Pro at cache-hit prices
+($0.0036/M input) is ~390× cheaper than GLM-5.2 input ($1.40/M). GLM's pull
+is the 1M context window and the ZCode harness, not the token price.
+
+## ZCode
+
+Z.ai's official coding harness for GLM-5.2, shipped Jun 2026 (current: 3.x).
+Persistent workspace, multi-agent, long-running tasks — positioned against
+Claude Code / Cursor / Copilot. Free client; revenue via the GLM Coding Plan
+($16.20 Lite → $144 Max). The same plan that provides `ZAI_API_KEY` for
+`pi --provider zai`.
+
+ZCode is relevant to the `PI_TUI_PROVIDER=zai` lane as the upstream harness
+target — the model GLM-5.2 is ZCode's official recommended model.
+
+## Where this lives in code
+
+- **Colibri daemon:** `PI_TUI_PROVIDER=zai` / `PI_TUI_MODEL=GLM-5.1` set in
+  build.cfg and propagated via the seed partition. Autospawned zot agents use
+  this for the z.ai JSONL transport path.
+  → [`build.cfg`](../../build.cfg), [`live/operator-session/seed/build.cfg`](../../live/operator-session/seed/build.cfg)
+- **Clawdie-iso:** `doc/LLM-PROVIDER-HARNESS.md` — matrix of provider/harness
+  verify status; `glm-5-turbo` documented for Aider lane via LiteLLM.
+  → [`doc/LLM-PROVIDER-HARNESS.md`](../../doc/LLM-PROVIDER-HARNESS.md)
+- **Skills:** `.agent/skills/coding-agent/SKILL.md` and
+  `.agent/skills/ollama/SKILL.md` reference GLM-5.1 as current production model.
+- **zread MCP:** z.ai repo comprehension tool (search_doc, get_repo_structure,
+  read_file). Uses the same GLM Coding Plan key. Config at
+  `~/.config/zread/zread.env` on domedog.
+
+## See also
+
+- [cost-model](./cost-model.md) — byte-stable prefixes and cache-hit metering
+- [deepseek-pricing](./deepseek-pricing.md) — DeepSeek V4 peak-valley pricing (the
+  cheaper option for most workloads)
+- [hive-routing](./hive-routing.md) — cost-aware task routing across providers
+
+## Sources
+
+Figures verified against public sources 02.jul.2026:
+
+- [BenchLM — GLM-5.2 vs GLM-5-Turbo](https://benchlm.ai/compare/glm-5-2-vs-glm-5-turbo)
+- [Artificial Analysis — GLM-5.2](https://artificialanalysis.ai/models/glm-5-2)
+- [OpenRouter — GLM-5 vs GLM-5-Turbo](https://openrouter.ai/compare/z-ai/glm-5/z-ai/glm-5-turbo)
+- [ZCode official site](https://zcode.z.ai/en)
+- [VentureBeat — Z.ai launches ZCode](https://venturebeat.com/technology/z-ai-launches-zcode-to-challenge-cursor-claude-code-and-github-copilot-in-ai-coding)
+- [South China Morning Post — Zhipu releases GLM-5.2 harness](https://www.scmp.com/tech/tech-trends/article/3359170/zhipu-ai-releases-harness-glm-52-model-chinese-firm-takes-aim-anthropic)

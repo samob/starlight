@@ -1,0 +1,184 @@
+---
+type: Skill Catalog Entry
+title: "Skills catalog"
+description: "Colibri's read-only runtime consumer for reviewed skill artifacts."
+tags: [skill]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-ledger/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Skills catalog
+
+← [index](./index.md)
+
+`colibri-skills` is Colibri's read-only runtime consumer for skill
+artifacts. Skills are authored and reviewed in this repo's `.agent/skills/`
+directory (the canonical home since the clawdie-ai retirement, PR #146);
+Colibri indexes them, validates checksums, chunks searchable text, and exposes
+typed structs to the daemon, CLI, and TUI. This crate does not author skills.
+
+→ `crates/colibri-skills/src/lib.rs`
+
+## Decisions
+
+### Source of truth stays in Colibri
+
+Skill artifacts live in this repository's `.agent/skills/`, not in a separate
+repo. They are committed reviewed directories containing prose, screenshots,
+transcripts, scripts, a manifest, and a checksum file. `colibri-skills` imports
+these artifacts into Colibri's SQLite store at runtime.
+
+This preserves review discipline: a skill changes through a PR in its home
+repo, then Colibri re-indexes the checkout. (Skills were migrated here from the
+now-retiring clawdie-ai repo in PR #146.)
+
+**Catalog prune (02.aug.2026):** the catalog was pruned from 59 to 47 skills.
+Twelve clawdie-ai/NanoClaw TS-era channel and tool-integration skills were
+removed — `add-discord`, `add-gmail`, `add-protonmail`, `add-slack`,
+`add-telegram`, `add-telegram-swarm`, `add-voice-transcription`, `add-parallel`,
+`customize`, `x-integration`, `docs-deployment`, `docs-localization-pipeline`
+(channels now live in zot; Crowdin retired). Every remaining `SKILL.md` and its
+reference/intent files carry an `okf:` frontmatter block; the importer ignores
+unknown keys, so the catalog index is unaffected.
+
+### Read-only, not authoring
+
+The crate deliberately lacks "create skill" or "edit skill" operations. Those
+belong in `.agent/skills/` where human review and media pipelines run. Putting
+authoring here would duplicate state and split review authority.
+
+The import path is target for Phase 1: scan the `.agent/skills/` checkout,
+parse manifests, verify checksums, and upsert into SQLite. The type scaffold
+exists today; the importer, chunker, and FTS5 index are planned.
+
+### Manifest-driven identity
+
+Each skill directory contains a run manifest file. From it the importer derives:
+
+- `skill_id`
+- `display_name`
+- `source_path` within the Colibri repo
+- pipeline stages and models used
+- source media metadata
+
+Any file not listed in the manifest can still be classified and indexed as an
+artifact, but the manifest is the canonical identity document.
+
+### Artifact classification by extension and filename
+
+`ArtifactType::from_path` classifies files without relying on a sidecar:
+
+- Python or shell files → Script
+- paths containing contact_sheet → ContactSheet
+- paths containing run_manifest and ending in .json → Manifest
+- paths containing sha256 or checksum → Checksum
+- paths containing report and ending in .json → Report
+- .md → Document
+- .jpg / .png / .webp → Image
+- .txt transcript files → Transcript
+- anything else → Other
+
+This heuristic keeps classification local and fast. Misclassified files can be
+fixed by renaming within `.agent/skills/`.
+
+→ `crates/colibri-skills/src/lib.rs` (`ArtifactType::from_path`)
+
+### Checksums are validated, then stored
+
+The run manifest is accompanied by a checksum file. At import time the runtime
+computes SHA-256 of each artifact and compares it to the committed checksum.
+Failures are reported in `ImportSummary::checksum_failures` and prevent
+`success()`.
+
+Only the hash is stored in SQLite; image and media blobs stay on disk. The
+catalog stores relative paths and hashes, not the binary content.
+
+### Content is chunked into searchable units
+
+The planned chunker turns skill content into `SkillChunk` rows:
+
+- Markdown sections by heading
+- Command blocks
+- Code blocks
+- Tables
+- Transcript segments
+
+Chunks are the unit of search and the unit shown in TUI or CLI results.
+`SkillChunk` carries `line_start`/`line_end` so a hit can point back to the
+source artifact.
+
+→ `crates/colibri-skills/src/lib.rs` (`SkillChunk`, `ChunkType`)
+
+### SQLite + FTS5 as the runtime search backend
+
+The target schema keeps three tables:
+
+- `system_skills` — one row per skill
+- `system_skill_artifacts` — one row per file
+- `system_skill_chunks` — one row per searchable chunk, plus a virtual FTS5
+  table for ranked text search
+
+This matches the store's pragmatic relational model. If skill volumes grow
+beyond tens of thousands of chunks, we can move the FTS index to PostgreSQL
+pgvector; until then, SQLite keeps the control-plane self-contained.
+
+→ [store-schema](./store-schema.md)
+
+→ [store-schema](./store-schema.md)
+
+### Status is a lifecycle marker, not a state machine
+
+`SkillStatus` is `active`, `archived`, or `superseded`. There is no pending
+review state because review happens in `.agent/skills/` before import. Colibri simply
+stops returning archived skills in default searches but keeps them in the store
+for audit and explicit lookups.
+
+### Natural-language verification question
+
+Each skill can carry a `verification` field like "can the user create and run
+an Astro project?". This is not an executable test; it is the acceptance
+criterion used during skill review and later during agent self-verification.
+
+### Runtime commands are read-only
+
+The CLI surface is planned as:
+
+- `colibri list-skills`
+- `colibri show-skill <id>`
+- `colibri search-skills <query>`
+- `colibri index-skills`
+- `colibri verify-skill <id>`
+
+`index-skills` refreshes the catalog from disk. The remaining commands query the
+runtime store. None mutate the `.agent/skills/` checkout.
+
+→ [operator-cli](./operator-cli.md)
+
+## Entity shape
+
+```text
+Skill
+ ├─ skill_id, display_name, source_path, status, verification
+ ├─ SkillManifest
+ │   ├─ run_id, created, notes
+ │   ├─ ManifestSource
+ │   ├─ [PipelineStage]
+ │   └─ [ModelUsage]
+ └─ [SkillArtifact]
+     ├─ artifact_type, relative_path, file_name, mime_type, size_bytes, sha256_hash
+     └─ [SkillChunk]
+         ├─ chunk_type, heading, content, line_start, line_end, tokens_estimate
+```
+
+## See also
+
+- [store-schema](./store-schema.md) — coordination and planned skill catalog tables
+- [operator-cli](./operator-cli.md) — planned skill catalog CLI commands
+- [task-board](./task-board.md) — agents will match claimed tasks to skills by capability

@@ -1,0 +1,235 @@
+---
+type: Reference
+title: "Forge ops — code.smilepowered.org"
+description: "Forge topology and operational contracts (backup, upgrade, restore, disk pressure)."
+tags: [forge]
+okf:
+  source_of_truth: "crates/colibri-mcp/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Forge ops — code.smilepowered.org
+
+← [index](./index.md)
+
+The forge is the coordination point for the whole hive: every agent PR, every
+CI lane, every `git pull` on valhala goes through it. This page records its
+**topology and the operational contracts** (backup, upgrade, restore,
+disk pressure) so any agent can reason about it correctly. The executable
+procedures live in the [`forge-ops` skill](../../.agent/skills/forge-ops/SKILL.md).
+
+Born from the 19.jul.26 incident chain: root disk at 99% → cache triage →
+repo-archive crawler bloat → backup pair taken → Forgejo 10→15 upgrade
+**completed same day** (direct jump, evening) → jail-restore project opened. Facts below are marked **validated** (actually
+executed/observed) or **TBD** (fill in as the work completes — agents chime in
+via PRs against this page).
+
+## Topology (validated 19.jul.26)
+
+- Host: `smilepowered.org` Linux VPS (Ubuntu, kernel 6.8, 52G root disk
+  `/dev/vda2`). Datacenter link — this matters for the migration question below.
+- Stack: docker compose, project dir `/opt/docker/forgejo/` (file is
+  `compose.yaml` — the newer compose naming, not the classic docker-compose
+  one). Data root `/var/lib/docker`.
+- Containers on the box (all one traefik `proxy` network): `forgejo`,
+  `postgres-main` (postgres:15-alpine), `traefik` (TLS/Let's Encrypt),
+  `vaultwarden`, `n8n`, `promtail`, `adminer`, `docs` (starlight),
+  `bucko-web-prod`.
+- Forgejo image tag: rolling major — `codeberg.org/forgejo/forgejo:15`
+  (**15.0.5** since 19.jul.26 evening; was 10.0.3 at incident time —
+  upgraded in one direct jump, see upgrade contract + log below).
+- Database: **PostgreSQL in `postgres-main`** — db `forgejo`, user `forgejo`.
+  NOT SQLite. Any backup that only covers the volume is incomplete.
+- Data volume: external `forgejo_data` →
+  `/var/lib/docker/volumes/forgejo_data/_data` (container `/data`).
+  Real repos ≈ 1.7G (`git/repositories/clawdie`). App config + secrets:
+  `/data/gitea/conf/app.ini`.
+- SSH ingress: host port 2222 → container 22. HTTP via traefik
+  (`code.smilepowered.org`, HTTP_PORT 3000).
+- Resource limits: **1G memory (512M reservation) / 0.5 CPU / 500 pids** on
+  the forgejo container. Memory 512M→1G right after the v15 jump: v15 plus
+  post-upgrade background chores pinned the 512M ceiling, Go GC thrashed,
+  pages took 80s (template time stayed 3.7s — the data-layer/render split is
+  the diagnostic). Pids 200→500 after a separate incident — the
+  `git cat-file` PID cascade (see `forge-ops` skill, Recipe B "Watch
+  AFTER"): git ops each spawn `cat-file --batch` workers; ~160 accumulated
+  under load, hit the 200 cap →
+  `fork/exec /usr/bin/git: resource temporarily unavailable` → cascade
+  (homepage ~109s, repo pages timed out).
+  500 is safe — normal 10–30 pids, burst &lt;100, and the 1G cap bounds the
+  total.
+- Actions runners: **self-hosted, off the VPS.** None runs as a container on
+  the forge box. Two live: label `freebsd:host` on **OSA** (the FreeBSD
+  build/mother host, `rc.d forgejo_runner`, config
+  `/usr/local/etc/forgejo-runner/`, no Docker — runs the `ci-gate` merge
+  gate), and label `linux` on **debby** (runs `format-check`, `leak-guard`,
+  `python-tests`). Container jobs in `ci.yml` targeting `ubuntu-latest` stay
+  non-executing by design until a Docker-capable runner exists.
+
+## Backup contract (validated 19.jul.26)
+
+A forge backup is **two artifacts, always**:
+
+1. **DB dump** — the official postgres image trusts local-socket connections,
+   so no password needed:
+   `docker exec postgres-main pg_dump -U forgejo -d forgejo | gzip > forgejo-db-$(date +%F).sql.gz`
+   (observed size: 3.0M)
+2. **Volume tar, excluding the archive cache** (stop forgejo for consistency;
+   chain the restart so downtime is bounded):
+   `docker stop forgejo && tar -C /var/lib/docker/volumes/forgejo_data/_data --exclude='./gitea/repo-archive' -czf forgejo-data-$(date +%F).tar.gz . && docker start forgejo`
+   (observed size: 1.6G; ~2 min downtime)
+
+Rules:
+
+- **Verify with the right tool per format** (learned 19.jul.26): `gzip -t`
+  for `.sql.gz` and `.tar.gz`; but a `pg_dump -Fc` custom-format dump is
+  NOT gzip — `gzip -t` fails on a perfectly good dump. Verify those with
+  `docker exec -i postgres-main pg_restore --list < x.dump > /dev/null`
+  (like `forgejo doctor`, `pg_restore` exists only inside the container).
+- **Off-box or it isn't a backup — and the copy is PULLED from valhala**
+  (`scp samob@code.smilepowered.org:/backup/forgejo_* …`), not pushed:
+  credentials that open the backup host must never live on the
+  internet-facing VPS. (Push target osa.smilepowered.org was unreachable
+  19.jul.26; treat it as an optional second copy, not the primary.)
+- The volume tar contains `gitea/conf/app.ini` with `SECRET_KEY`,
+  `INTERNAL_TOKEN`, LFS/OAuth JWT secrets (exact key names: TBD verify).
+  A restore that regenerates these breaks every token, 2FA enrollment, and
+  LFS pointer. Treat the tarball as secret material.
+- Take a **fresh pair immediately before any major upgrade** (on the
+  stopped instance) and again after reaching the target version (the
+  post-upgrade pair is what restore drills consume — see version-match
+  rule). Both pairs exist for the 10→15 jump: `pre_v10` and `post_v15`,
+  19.jul.26 (dump 3.5M `-Fc`, tar 2.0G).
+
+## Upgrade contract (rewritten after execution, 19.jul.26)
+
+- **Direct multi-major jump is supported and validated.** The official
+  upgrade guide says to "upgrade straight to the latest released version —
+  the upgrade procedure will take care of migrations", and each release's
+  notes assume multi-major jumps (v15: "if you upgrade from v11.0, also
+  check the release notes for v12.0, v13.0 and v14.0"). The earlier version
+  of this page said "one major per hop, never skip … how instances corrupt"
+  — that was Gitea folklore, disproven by execution: 10.0.3 → 15.0.5 landed
+  in one tag change with migrations completing in minutes. What IS required:
+  read the breaking-changes notes of **every** major crossed (and note
+  Forgejo majors are quarterly — v12 exists; an agent once drafted a hop
+  plan that skipped it).
+- Hop-by-hop is the **fallback only**: after a failed jump + restore, walk
+  majors one at a time to isolate which migration breaks.
+- Mechanics + pre-flight (`doctor check --all`, `flush-queues`, backup on
+  the stopped instance, docker ≥ 20.10.6): see the `forge-ops` skill,
+  Recipe B. Never recreate the service with a hand-rolled `docker run` —
+  compose-file tag edit only, or ports/labels/limits are silently lost and
+  the stale compose tag becomes a downgrade trap.
+- Watch items: memory AND pids (see resource limits in topology — the
+  post-jump 80s memory-ceiling incident AND the separate PID-exhaustion
+  cascade; slow pages have two causes, distinguished by `docker stats` MEM%
+  vs the PIDS column + `fork/exec: resource temporarily unavailable` in
+  logs — see `forge-ops` skill Recipe B), **Actions runner reconnect after
+  the jump** (runners are
+  off-VPS — see topology: `freebsd` on OSA, `linux` on debby; confirm each
+  shows online + one green run in the admin UI — `ci-gate` on `freebsd`,
+  `format-check`/`leak-guard` on `linux`; the runner↔forge wire can shift
+  across a major bump, so reconnect is the real check, not a restart).
+
+### Upgrade log
+
+| jump                   | date      | migration time | issues                                                                                                                                                       |
+| ---------------------- | --------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 10.0.3 → 15.0.5 direct | 19.jul.26 | minutes        | none during migration; after: forced re-login (v15 cookie rename — `COOKIE_REMEMBER_NAME` is `[security]`, not `[session]`) + 80s pages until memory 512M→1G |
+
+## Restore project — jail mirror on valhala (planned)
+
+Goal: a bastille jail on valhala running Forgejo restored from the VPS
+backups. Primary value: **the only real test of a backup is a restore**;
+secondary value: a warm mirror that buys migration optionality.
+
+- **Version-match rule:** restore target must run the same major as the
+  backup source. FreeBSD pkg carries **only Forgejo 15** (`forgejo15-15.0.4`,
+  `forgejo`/`forgejo-lts` meta at 15, plus `forgejo-act_runner` — validated
+  against the live FreeBSD:15 catalog 19.jul.26). Both conditions are now
+  met: VPS runs 15.0.5 and a verified post-v15 pair exists (19.jul.26).
+  (Technically a v15 binary migrates v10 data at first start — that's
+  literally what the upgrade did — but a restore DRILL should prove the
+  backup, not the migration path; same-major keeps the two questions apart.)
+- Path remap: container `/data/git`, `/data/gitea` → FreeBSD port layout
+  (TBD: verify exact paths — expected `/var/db/forgejo` + app.ini at
+  `/usr/local/etc/forgejo/`).
+- Secrets transplant from the backed-up `app.ini` (see backup contract) —
+  without it the mirror looks healthy but every credential is dead.
+- Database: valhala host PG18 (mother plan) vs in-jail postgres — TBD decision.
+- ROOT_URL/domain on the mirror: TBD (internal name; NOT code.smilepowered.org).
+- **Migration is a separate decision from the mirror.** The VPS has a
+  datacenter link + Let's Encrypt via traefik; valhala is a home connection.
+  Run the mirror with scheduled restore drills (future colibri task — feed
+  the P4 reporting loop); DNS cutover only after the mirror has real uptime
+  history. Sovereignty with a datacenter fallback beats either alone.
+
+## Disk-pressure playbook (validated 19.jul.26, recurred 20.jul.26)
+
+Two full-disk incidents in 8 days. First (19.jul.26): package-manager
+caches + uncapped container logs. Second (20.jul.26): repo-archive alone,
+18 GiB, root disk at 100%/0 free — logs were a non-issue that time (all
+under 40M, log cap from incident 1 held). Lesson: check the actual `du`
+map each time rather than assuming the same culprit — the ladder below
+covers both, but which step matters shifts.
+
+Triage ladder, in order:
+
+1. Instant safe wins: `journalctl --vacuum-size=200M` (freed 890M),
+   `apt-get clean`.
+2. Map: `du -xh --max-depth=2 / | sort -rh | head -25`, then recurse into the
+   two biggest. On this box the answer was ~14G of **package-manager caches**
+   in `$HOME` (`.npm` 7.1G → `npm cache clean --force`; `.nvm` tarball cache
+   → `nvm cache clear`; `.chromium-browser-snapshots` 626M → rm) plus the
+   forge volume.
+3. Docker: `docker system df` (note: it does NOT count container json logs —
+   the evening round found 5.3G it didn't report: forgejo 2.9G + traefik
+   2.4G. Check `du /var/lib/docker/containers/*/*-json.log` separately;
+   truncate live with `truncate -s 0`, never `rm` — the daemon holds the fd).
+   All-containers-Up means prune yields little (334M here). Log rotation:
+   **applied 19.jul.26** — daemon.json `max-size 20m / max-file 3`; takes
+   effect per-container at recreation only (forgejo capped since the v15
+   jump; long-lived containers may still be uncapped).
+4. Forgejo-specific: see below.
+
+### The repo-archive trap (the 5.5G lesson)
+
+Forgejo caches every "download as archive" hit under
+`/data/gitea/repo-archive/`. Public instance + crawlers = unbounded growth
+(5.5G here, 3.4G on a single repo, vs 1.7G of actual repos). Two-layer gotcha:
+
+- The admin cron task "Delete all repositories' archives" deletes only
+  **DB-tracked** archives (freed 0.5G).
+- The bulk was **orphaned files** (DB rows already expired, files left
+  behind). Filesystem-level cleanup is safe — the directory is pure
+  regenerable cache: `find …/repo-archive -mindepth 1 -delete`, then re-run
+  the cron task once to flush now-fileless DB rows.
+
+Regrowth is measured in hours, not months: cleaned on the morning of
+19.jul.26, `doctor check --all` found **374 orphans / 6.5 GiB** again by
+that evening (cleared once more before the pre-upgrade backup). Cleanup
+was never going to hold — regrowth outran the manual sweep. It hit again
+20.jul.26: **18 GiB** in 8 days, a second full root-disk outage (`/dev/vda2`
+at 100%, 0 bytes free).
+
+**Fixed at the root 20.jul.26** — disabled the feature that generates the
+cache in the first place, in `app.ini` under `[repository]`:
+
+```ini
+DISABLE_DOWNLOAD_SOURCE_ARCHIVES = true
+```
+
+Plain `docker restart forgejo` picks it up (no image change, no migration).
+Verified: "Download ZIP/TAR.GZ" links gone from repo pages, direct
+`/archive/*.zip` URLs 404 instead of regenerating. No known product need for
+source-archive downloads on this instance, so the feature is off, not just
+cleaned — the directory will not regrow.
+
+## Related
+
+- [updating-a-node](./updating-a-node.md) — FreeBSD-side update discipline
+- [bare-metal-freebsd](./bare-metal-freebsd.md)
+- Skills: `forge-ops` (procedures for everything above), `backup-db`,
+  `bastille`

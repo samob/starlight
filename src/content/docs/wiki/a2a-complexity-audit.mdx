@@ -1,0 +1,185 @@
+---
+type: Reference
+title: "A2A Complexity Audit"
+description: "A2A code complexity impact — 6-protocol surface audit, when A2A pays off."
+tags: [a2a]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "docs/MULTI-AGENT-HOST.md"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# A2A Complexity Audit
+
+**Question:** Does A2A reduce Colibri's code complexity, or is it additive?
+**Date:** 27.jun.2026
+**Referenced from:** [hive-pane.md](./hive-pane.md), [hive-routing.md](./hive-routing.md)
+
+## Current protocol surface area
+
+Colibri speaks 5 protocols today:
+
+| Protocol             | Where                                                                      | Lines | Purpose                                                           |
+| -------------------- | -------------------------------------------------------------------------- | ----- | ----------------------------------------------------------------- |
+| **Custom JSON wire** | `crates/colibri-daemon/src/socket.rs` + `crates/colibri-client/src/lib.rs` | 1,981 | Local daemon control (spawn, status, snapshot, tasks, skills)     |
+| **MCP JSON-RPC**     | `crates/colibri-mcp/src/lib.rs`                                            | 570   | Editor integration + external MCP host                            |
+| **MCP-over-SSH**     | `packaging/mother/` (3 files)                                              | 437   | Mother hive entrypoint (forced-command allowlist + node register) |
+| **JSONL**            | `crates/colibri-glasspane/src/lib.rs`                                      | 1,186 | Agent subprocess stdout events                                    |
+| **SQL**              | `crates/colibri-ledger/src/lib.rs` + `crates/colibri-ledger/src/schema.rs` | 1,150 | Local coordination (tasks, agents, skills, tenants)               |
+
+**Total protocol surface: ~5,324 lines.**
+
+---
+
+## What A2A would replace
+
+### 1. Mother MCP-over-SSH bridge → A2A HTTP endpoint
+
+Today's mother entrypoint:
+
+```
+USB node → SSH (authorized_keys forced-command) → colibri-mcp-ssh → colibri-mcp → PostgreSQL
+                                                                       └─ node-register-mcp (embedded psql)
+```
+
+With A2A:
+
+```
+USB node → HTTPS → mother A2A endpoint → PostgreSQL
+                    └─ /a2a (task exchange)
+                    └─ /.well-known/agent.json (discovery)
+```
+
+**Removed:**
+
+- `colibri-mcp-ssh` (32 lines) — SSH forced-command allowlist wrapper
+- `node-register-mcp` (88 lines) — Custom MCP tool with embedded psql
+- SSH key management in `setup-mother.sh` (~40 lines of key distribution logic)
+
+**Removed total: ~160 lines.**
+
+**Added:**
+
+- A2A HTTP endpoint on mother (~200 lines)
+- A2A client library integration on USB node (~150 lines)
+- mTLS/TLS termination for auth (~30 lines)
+
+**Added total: ~380 lines.**
+
+**Net delta: +220 lines.** Not a code reduction. But operational complexity drops significantly:
+
+- No SSH key distribution to USB nodes (key lives on seed partition → no longer needed on mother)
+- No forced-command allowlist to maintain
+- Standard HTTPS is easier to firewall, audit, and monitor than SSH forced-command
+- Agent Card URL is discoverable without manual external MCP registry entries
+
+### 2. External MCP server discovery → Agent Card
+
+Today: external MCP registry config — manual JSON listing third-party MCP servers:
+
+```json
+{
+  "servers": [
+    {
+      "name": "filesystem",
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-server-filesystem", "/tmp"],
+      "env": {}
+    }
+  ]
+}
+```
+
+With A2A: third-party tools that speak A2A (not MCP) publish an Agent Card. Colibri discovers them via the well-known Agent Card URL instead of manual JSON config files.
+
+**Reality check:** No third-party tools speak A2A yet. The protocol was just announced (April 2025). MCP has ~2 years of ecosystem maturity. This is a _future_ replacement, not a _current_ one.
+
+**Verdict:** A2A discovery doesn't reduce code today. External MCP stays for tool access.
+
+### 3. Ad-hoc cost data format → Typed A2A part
+
+Today: cost data is embedded in the daemon's heartbeat logic — unstructured:
+
+```rust
+info!(task_id = %task_id, cost = u.cost(), "task cost captured");
+```
+
+With A2A: cost data is a typed message part (`application/json+cost`). The format is standardized, not ad-hoc.
+
+**Code savings:** ~10 lines (the info! log stays; the A2A part is new code).
+
+**Verdict:** Negligible code impact. The value is _interop_, not complexity reduction.
+
+---
+
+## What A2A does NOT replace
+
+| Component                                                             | Why A2A doesn't touch it                                                                                                                                      | Lines saved |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| **Unix socket wire protocol** (`crates/colibri-daemon/src/socket.rs`) | A2A is cross-node HTTP. Local daemon control needs IPC — Unix socket is faster, auth-free (filesystem permissions), and doesn't need a network stack.         | 0           |
+| **Spawner** (`crates/colibri-daemon/src/spawner.rs`)                  | A2A routes tasks to existing agents. Colibri _creates_ agents by spawning subprocesses. A2A has no process lifecycle concept.                                 | 0           |
+| **Glasspane** (`crates/colibri-glasspane/src/lib.rs`)                 | A2A doesn't watch subprocess stdout. Glasspane is a PTY observer — it reads JSONL from child processes. A2A operates one layer above.                         | 0           |
+| **Store** (`crates/colibri-ledger/src/lib.rs`)                        | A2A doesn't replace local SQLite coordination. Each node needs local persistence for task board, agents, skills — A2A is the _transport_, not the _database_. | 0           |
+| **MCP editor bridge**                                                 | A2A is agent-to-agent. MCP is human-to-tool. Different protocols for different directions. They coexist.                                                      | 0           |
+| **Contracts schemas** (`crates/colibri-contracts/src/lib.rs`)         | A2A uses JSON Schema for input validation. Colibri's contracts are already compatible — no change needed.                                                     | 0           |
+
+**Total irreplaceable: ~5,000 lines.** A2A doesn't reduce this at all.
+
+---
+
+## Net complexity analysis
+
+```
+                         BEFORE      AFTER A2A
+                         ──────      ─────────
+Unix socket protocol      1,981       1,981        (unchanged)
+MCP bridge                  570         570        (unchanged)
+Mother MCP-over-SSH         437           0        (REMOVED)
+A2A endpoint                  0         380        (NEW)
+Glasspane JSONL           1,186       1,186        (unchanged)
+SQLite store              1,150       1,150        (unchanged)
+Contracts schemas           200         200        (unchanged)
+                         ──────      ──────
+TOTAL                     5,524       5,467
+                         ──────      ──────
+```
+
+**Net delta: −57 lines.** Technically a tiny reduction. Realistically: the code moves around, it doesn't shrink.
+
+---
+
+## The real trade-off
+
+A2A is not a complexity reduction play. It's an **interoperability and operational simplicity** play:
+
+| Metric                     | MCP-over-SSH (current)                                         | A2A (proposed)                                          |
+| -------------------------- | -------------------------------------------------------------- | ------------------------------------------------------- |
+| **Lines of code**          | ~5,524 (spread across 6 crates + 3 shell scripts)              | ~5,467 (SSH scripts gone, A2A handler added)            |
+| **Protocol count**         | 5                                                              | 6 (A2A adds one)                                        |
+| **Operational complexity** | SSH keys × N nodes, forced-command allowlists, peer auth setup | One HTTPS endpoint, mTLS certs, well-known URL          |
+| **Discoverability**        | Manual external MCP registry entries                           | Agent Card at well-known URL                            |
+| **Interoperability**       | Colibri-only                                                   | Any A2A client                                          |
+| **Debugability**           | `ssh -v`, `psql`, `jq`                                         | `curl`, browser devtools, standard HTTP tooling         |
+| **Ecosystem maturity**     | N/A (Colibri-specific)                                         | Protocol < 3 months old, zero adoption                  |
+| **When it pays off**       | Works today for 4 nodes                                        | Pays off at 10+ nodes, or when 3rd-party tools ship A2A |
+
+---
+
+## Recommendation: Later, not now
+
+The right window for A2A is when one of these becomes true:
+
+1. **We have >10 hive nodes** — SSH key distribution becomes painful
+2. **A third-party tool ships A2A support** — interop value materializes
+3. **We want federation** — multiple hives discovering each other
+
+Until then: the current MCP-over-SSH bridge is 437 lines of boring, working code. A2A would add 380 lines for a protocol that has zero adopters. The code savings (~57 lines) don't justify the protocol risk.
+
+**Phase 2 (next sprint) should not include A2A.** Build the routing engine on the existing MCP bridge. Add A2A as Phase 3 — when the protocol has real-world adoption and Colibri has enough nodes to benefit from discovery.
+
+The HIVE-PANE.md A2A section is a good north-star design doc. It stays in the wiki as "planned." But it shouldn't drive implementation priority.

@@ -1,0 +1,66 @@
+---
+type: Reference
+title: "Stable JSON contracts"
+description: "Stable JSON schemas (run-manifest, runtime-inventory, provider-test), fixture tests."
+tags: [contract]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-contracts/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+# Stable JSON contracts
+
+← [index](./index.md)
+
+`colibri-contracts` holds the stable, language-agnostic wire shapes shared
+between Colibri (Rust) and Clawdie agents (TypeScript). It owns _schemas and
+(De)serialize_, not business logic.
+
+## Why a separate contracts crate
+
+- Prevent duplicated definitions between Rust and TypeScript lanes.
+- Keep committed manifests in `manifests/` parseable by both sides.
+- Centralize schema strings, field renaming aliases, and backward-compat
+  defaults.
+
+## Active schemas
+
+| Schema                                 | Rust struct          | Purpose                                                        |
+| -------------------------------------- | -------------------- | -------------------------------------------------------------- |
+| `clawdie.interagent.run-manifest.v1`   | `RunManifest`        | Records a build/test run — role, agent, artifacts, summary.    |
+| `clawdie.runtime-version-inventory.v1` | `RuntimeInventory`   | Host runtime snapshot — OS, package versions, npm/node/zot/pi. |
+| `clawdie.provider-test.result.v1`      | `ProviderTestResult` | DeepSeek cache-hit probe result and token accounting.          |
+| `clawdie.task-cost-summary.v1`         | `TaskCostSummary`    | Per-task cost breakdown — input/output/cache tokens, cost_usd. |
+
+Schema constants and structs live in `crates/colibri-contracts/src/lib.rs`.
+
+## Evolution rules
+
+- The crate carries **no logic** — only `serde` structs and schema constants.
+- New fields are normally optional with `#[serde(default)]` so old manifests
+  still parse.
+- `RuntimeInventory.pi` is optional because not every host installs `pi` or
+  `zot`.
+- `HostStatus.raw` is a catch-all `serde_json::Value` so hostile collector
+  output can be captured without forcing a schema bump.
+
+## Golden tests
+
+`crates/colibri-contracts/tests/fixtures.rs` parses every committed manifest in
+`manifests/` and asserts round-trip equality. The fixtures are intended to be
+**cross-platform** — if a manifest produced on Linux differs from one produced
+on FreeBSD 15, the difference must be understood and documented before it is
+merged.
+
+## See also
+
+- [cost-model](./cost-model.md) — how the provider-test result feeds cache-hit
+  metering.
+- [runtime-inventory](./runtime-inventory.md) — where the runtime inventory is
+  produced.

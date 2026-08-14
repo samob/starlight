@@ -1,0 +1,45 @@
+---
+type: Reference
+title: "Llama Cpp Benchmarks"
+description: "Colibri wiki page: Llama Cpp Benchmarks"
+tags: [benchmark, llama]
+status: stable
+stale_after: 2026-12-31
+generated: { by: "human:sam", at: "2026-06-15T10:00:00Z" }
+verified:
+  - { by: "human:sam", at: "2026-06-20T09:00:00Z" }
+okf:
+  source_of_truth: "crates/colibri-deepseek/src/lib.rs"
+  last_verified: "2026-08-02"
+  verified_by: "opus-smilepowered"
+---
+
+## valhala llama.cpp benchmark — 08.jul.2026
+
+**Hardware:** HP ML350p Gen8, 2× Xeon E5-2620 (Sandy Bridge, AVX1-only), 12 threads, 36 GB installed / 12.5 GB usable (legacy BIOS MMIO hole), FreeBSD 15.1, neo RAIDZ1 on P420i SAS
+
+**Build:** llama.cpp b9940, source-built with `-DGGML_NATIVE=OFF -DGGML_AVX2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_BMI2=OFF`
+
+### Model comparison
+
+| Metric                       | 14B R1 Distill Qwen Q5_K_M | 8B R1-0528-Qwen3 Q5_K_M | Ratio |
+| ---------------------------- | -------------------------- | ----------------------- | ----- |
+| File size                    | 10.5 GB                    | 5.7 GB                  | 1.8×  |
+| RSS at rest                  | ~10.2 GB                   | ~6.0 GB                 | 1.7×  |
+| Prompt processing            | ~430 ms/tok (2.3 tok/s)    | ~200 ms/tok (5.0 tok/s) | 2.2×  |
+| Generation                   | ~968 ms/tok (1.0 tok/s)    | ~555 ms/tok (1.8 tok/s) | 1.7×  |
+| 100-token response           | ~100 sec                   | ~56 sec                 | 1.8×  |
+| Long-context prompt (97 tok) | —                          | 194 ms/tok, 47s total   | —     |
+
+### Coexistence
+
+Both models can load simultaneously in 12.5 GB (RSS ~16.2 GB — kernel compresses inactive pages). Sequential loading required on spinning SAS (parallel = disk thrash). Under memory pressure: kill 14B, optionally spin up 8B to free ~4 GB.
+
+### Router row
+
+| Model | Latency tier             | Use case                                                                         |
+| ----- | ------------------------ | -------------------------------------------------------------------------------- |
+| 14B   | Async/batch (~1 tok/s)   | Non-blocking reasoning, summarization, overnight classification, plan validation |
+| 8B    | Async/batch (~1.8 tok/s) | Same workload, faster turnaround — still not interactive on this CPU             |
+
+Neither hits interactive latency on Sandy Bridge AVX1-only. Haswell+ (AVX2+FMA) would roughly double throughput. Route blocking work to cloud; use valhala for zero-cost async agent processing.
