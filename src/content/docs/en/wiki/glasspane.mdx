@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-glasspane/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 ## What this is
 
@@ -43,7 +43,7 @@ metadata but don't affect the state machine.
 `Stalled` is **not** a sixth variant — it is a derived flag: a pane is stalled
 when no event has arrived within `DEFAULT_STALL_AFTER` (4 hours). Derived
 attention (Error / Blocked / Stalled) is covered by
-[operator-attention](./operator-attention.md).
+[operator-attention](./operator-attention).
 
 **Why not just tail the log**: raw event logs are agent-specific and change over
 time (zot adds new event types). The state machine is a stable contract that the
@@ -112,7 +112,7 @@ that's fundamentally about current state, not event delivery.
 The **attention** half of this roadmap shipped: the derived attention
 predicate, the TUI attention bar / jump keys / filter / row highlight, and
 edge-triggered terminal-capture alerts. See
-[operator-attention](./operator-attention.md) for the shipped system. What
+[operator-attention](./operator-attention) for the shipped system. What
 remains here is the genuinely-unbuilt direction.
 
 ### Push notifications outbound, not just on-screen
@@ -148,6 +148,6 @@ control and needs its own design pass.
 
 ## See also
 
-- [agent-harness](./agent-harness.md) — the zot/Colibri split that Glasspane observes
-- [operator-attention](./operator-attention.md) — the shipped attention/alert layer over this state machine, including terminal capture + signature triage
-- [naming-decisions](./naming-decisions.md) — `pi_session_id → session_id`, `pi_type → event_type`
+- [agent-harness](./agent-harness) — the zot/Colibri split that Glasspane observes
+- [operator-attention](./operator-attention) — the shipped attention/alert layer over this state machine, including terminal capture + signature triage
+- [naming-decisions](./naming-decisions) — `pi_session_id → session_id`, `pi_type → event_type`

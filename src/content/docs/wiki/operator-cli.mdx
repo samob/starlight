@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-client/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 The `colibri` binary is the operator's command-line interface to the daemon.
 It wraps a typed Unix-socket client (`DaemonClient`) and turns typed commands
@@ -77,7 +77,7 @@ This is an intentional contrast with `colibri-mcp`, which exposes the daemon to
 editor assistants and therefore uses `COLIBRI_MCP_WRITE=1` as an explicit trust
 switch. An operator at the shell already has that trust by virtue of the socket.
 
-→ [external-mcp](./external-mcp.md)
+→ [external-mcp](./external-mcp)
 
 ### Commands return JSON, not human prose
 
@@ -128,9 +128,9 @@ sample close to its primary caller without adding a new crate.
 
 ## See also
 
-- [tui](./tui.md) — the live terminal dashboard that uses the same `DaemonClient`
-- [glasspane](./glasspane.md) — the pane state machine behind `snapshot`
-- [task-board](./task-board.md) — commands that manipulate the task board
-- [store-schema](./store-schema.md) — SQLite entities queried by the CLI
-- [vault-provision](./vault-provision.md) — why `register-tenant` carries a jail root path
-- [external-mcp](./external-mcp.md) — another daemon client with write-gating
+- [tui](./tui) — the live terminal dashboard that uses the same `DaemonClient`
+- [glasspane](./glasspane) — the pane state machine behind `snapshot`
+- [task-board](./task-board) — commands that manipulate the task board
+- [store-schema](./store-schema) — SQLite entities queried by the CLI
+- [vault-provision](./vault-provision) — why `register-tenant` carries a jail root path
+- [external-mcp](./external-mcp) — another daemon client with write-gating

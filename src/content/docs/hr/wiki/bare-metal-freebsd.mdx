@@ -12,7 +12,7 @@ okf:
   source_of_truth: "docs/MULTI-AGENT-HOST.md"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md) | → [ts-legacy](./ts-legacy.md)
+---← [index](../) | → [ts-legacy](./ts-legacy)
 
 Practical notes for testing Clawdie images on physical hardware (HP ProLiant
 ML350p Gen8). The Linux agent owns the comprehensive
@@ -36,7 +36,7 @@ what the build host needs to seed for headless operation.
 ## Capability profile (for hive routing)
 
 This node's hardware limits what local models it can serve. The
-[runtime-inventory](./runtime-inventory.md) probe records these facts so the
+[runtime-inventory](./runtime-inventory) probe records these facts so the
 hive router can decide: send the task here (local, fast, zero API cost) or to
 the cloud (slower, costs tokens, better model).
 
@@ -57,7 +57,7 @@ reasoning quality is correct on real Colibri code (validated on Rust borrow-chec
 analysis) — latency is the cost, not accuracy. Prose generation (summarization,
 interactive reasoning) routes to cloud.
 
-[llama-cpp](./llama-cpp.md) covers the full install + model selection guide,
+[llama-cpp](./llama-cpp) covers the full install + model selection guide,
 including the Sandy Bridge build flags.
 
 ## Two paths to the hardware

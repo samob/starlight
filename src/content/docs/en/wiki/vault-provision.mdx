@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-vault/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 `colibri-vault` fetches secrets from a Vaultwarden collection and writes them
 into a freshly created jail as `0600` env-file. It is invoked as a post-spawn
@@ -39,7 +39,7 @@ This means `colibri-vault` does not need a separate lookup table or configuratio
 file. It finds the collection by the jail name and knows the destination path
 from the tenant row.
 
-→ [store-schema](./store-schema.md)
+→ [store-schema](./store-schema)
 
 ### Provisioning is a post-spawn hook, not a separate command
 
@@ -74,7 +74,7 @@ in `TargetEscapesRoot` before any file is created.
 This is the same filesystem containment primitive reused by the external MCP
 server spawner.
 
-→ [jail-confinement](./jail-confinement.md)
+→ [jail-confinement](./jail-confinement)
 
 ### Wrap the official `bw` CLI
 
@@ -104,7 +104,7 @@ Optional:
 The CLI never sees these values; it only registers the tenant row that triggers
 the hook.
 
-→ [operator-cli](./operator-cli.md)
+→ [operator-cli](./operator-cli)
 
 ### Server-mismatch is fail-closed
 
@@ -168,8 +168,8 @@ provision_tenant_env(tenant_id, jail_root)
 
 ## See also
 
-- [store-schema](./store-schema.md) — how the tenant row is stored
-- [jail-confinement](./jail-confinement.md) — how jails are created and confined
-- [operator-cli](./operator-cli.md) — `register-tenant` and `spawn-agent` verbs
-- [mother-hive](./mother-hive.md) — a related Vaultwarden-backed pubkey exchange
+- [store-schema](./store-schema) — how the tenant row is stored
+- [jail-confinement](./jail-confinement) — how jails are created and confined
+- [operator-cli](./operator-cli) — `register-tenant` and `spawn-agent` verbs
+- [mother-hive](./mother-hive) — a related Vaultwarden-backed pubkey exchange
   used to authorize agents to call mother

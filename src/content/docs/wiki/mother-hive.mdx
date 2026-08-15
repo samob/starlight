@@ -12,7 +12,7 @@ okf:
   source_of_truth: "packaging/mother/MOTHER-SETUP.md"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 ## What this is
 
@@ -69,7 +69,7 @@ trigger is table-agnostic and auto-computes `has_gpu`, `gpu_vendor`,
 `can_run_local_llm`, `has_wifi`, `max_model` on INSERT.
 
 → [`mother_schema.sql`](../../packaging/mother/mother_schema.sql),
-[naming-decisions](./naming-decisions.md) (`usb_nodes → hive_nodes` row)
+[naming-decisions](./naming-decisions) (`usb_nodes → hive_nodes` row)
 
 ### PostgreSQL peer auth (no passwords)
 
@@ -99,7 +99,7 @@ separate physical medium that the operator controls. Even without a seed, the
 ISO boots and runs — the daemon's external MCP connection to mother fails
 gracefully (SSH: "config file not found"), and the node operates standalone.
 
-→ [naming-decisions](./naming-decisions.md) ("Known residue"), clawdie-iso #133
+→ [naming-decisions](./naming-decisions) ("Known residue"), clawdie-iso #133
 
 ### Daemon user, not operator
 
@@ -161,6 +161,6 @@ PostgreSQL`, including the `derive_capabilities()` trigger output.
 
 ## See also
 
-- [agent-harness](./agent-harness.md) — the zot/Colibri split; autospawn
-- [naming-decisions](./naming-decisions.md) — `usb_nodes → hive_nodes`, autospawn flag rename
-- [quality-gates](./quality-gates.md) — the gate that should catch drift at PR time
+- [agent-harness](./agent-harness) — the zot/Colibri split; autospawn
+- [naming-decisions](./naming-decisions) — `usb_nodes → hive_nodes`, autospawn flag rename
+- [quality-gates](./quality-gates) — the gate that should catch drift at PR time

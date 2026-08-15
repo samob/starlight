@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-deepseek/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md) | → [bare-metal-freebsd](./bare-metal-freebsd.md)
+---← [index](../) | → [bare-metal-freebsd](./bare-metal-freebsd)
 
 llama.cpp is a C/C++ inference engine for running LLMs on CPU or GPU. It uses
 the GGUF quantized format — models are compressed but run with near-full
@@ -238,11 +238,11 @@ llama_server_args="--host 0.0.0.0 --port 8080 -ngl 0 -c 8192"
 ## Hive integration (planned)
 
 llama.cpp models are a natural fit for the hive routing layer
-([hive-routing](./hive-routing.md)). A node with 32 GB RAM advertising a 32B
+([hive-routing](./hive-routing)). A node with 32 GB RAM advertising a 32B
 model becomes a preferred target for classification, summarization, and small
 code-review tasks — the hive router picks local when the capability matches and
 the cloud when it doesn't. The model is listed in the node's
-[runtime-inventory](./runtime-inventory.md) alongside CPU, RAM, and disk.
+[runtime-inventory](./runtime-inventory) alongside CPU, RAM, and disk.
 
 ## Pi integration (round-trip tested)
 
@@ -294,9 +294,9 @@ Design decisions — round-trip tested on valhala:
 
 ## References
 
-- [Benchmarks (valhala)](./llama-cpp-benchmarks.md) — measured 8B vs 14B on Xeon E5-2620
+- [Benchmarks (valhala)](./llama-cpp-benchmarks) — measured 8B vs 14B on Xeon E5-2620
 - [llama.cpp GitHub](https://github.com/ggerganov/llama.cpp)
 - [GGUF + llama.cpp on Hugging Face](https://huggingface.co/docs/hub/gguf-llamacpp)
 - [Hermes llama-cpp skill](https://code.smilepowered.org/clawdie/hermes-soul/src/branch/debby/skills/mlops/inference/llama-cpp/SKILL.md)
-- [bare-metal-freebsd](./bare-metal-freebsd.md) — HP ML350p hardware notes
+- [bare-metal-freebsd](./bare-metal-freebsd) — HP ML350p hardware notes
 ````

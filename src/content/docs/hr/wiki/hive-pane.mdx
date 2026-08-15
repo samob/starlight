@@ -14,9 +14,9 @@ okf:
   verified_by: "opus-smilepowered"
 ---
 
-← [index](./index.md)
+← [index](../)
 
-Hive Pane is the multi-node extension of the [glasspane](./glasspane.md) metaphor.
+Hive Pane is the multi-node extension of the [glasspane](./glasspane) metaphor.
 Where glasspane watches local agent subprocesses through JSONL stdout, Hive Pane
 watches hive nodes through PostgreSQL rows — same operator mental model (pane =
 unit of observation), different scale (local agent vs remote host).
@@ -25,8 +25,8 @@ unit of observation), different scale (local agent vs remote host).
 
 One board, not many ad-hoc surfaces. The operator sees every hive node — its
 status, accumulated cost, task success rate, and hardware capabilities — in a
-single view. The data already exists ([mother-hive](./mother-hive.md) for node
-registry, [task-board](./task-board.md) for per-task cost). Hive Pane just
+single view. The data already exists ([mother-hive](./mother-hive) for node
+registry, [task-board](./task-board) for per-task cost). Hive Pane just
 queries and renders it.
 
 ## Why this exists
@@ -78,11 +78,11 @@ agent costs. Same supervision loop, different unit of observation.
 A glasspane pane is ephemeral (dies with the agent). A Hive Pane row is durable
 (`hive_nodes` persists across reboots).
 
-→ [glasspane](./glasspane.md)
+→ [glasspane](./glasspane)
 
 ### Hive routing
 
-[hive-routing](./hive-routing.md) defines the engine underneath the board:
+[hive-routing](./hive-routing) defines the engine underneath the board:
 node identity (`machine_id`), local LLM capability probes, cost-aware task
 routing, and the implementation strategy. Hive Pane is the presentation layer;
 hive-routing is the scheduling layer.
@@ -93,7 +93,7 @@ Mother hive is the data layer: PostgreSQL `hive_nodes` table with
 `derive_capabilities()` trigger. Hive Pane is the presentation layer: it queries
 that table and renders it.
 
-→ [mother-hive](./mother-hive.md)
+→ [mother-hive](./mother-hive)
 
 ### Task board + cost tracking
 
@@ -108,12 +108,12 @@ the hive view, this data needs to flow to the mother. Two paths:
 2. **A2A push** (planned, see below): nodes push cost data to mother as
    structured A2A message parts. Decouples cost reporting from the bridge.
 
-→ [task-board](./task-board.md)
-→ [contracts](./contracts.md) (TaskCostSummary schema)
+→ [task-board](./task-board)
+→ [contracts](./contracts) (TaskCostSummary schema)
 
 ## A2A integration (planned)
 
-> 📋 **Complexity audit:** [a2a-complexity-audit](./a2a-complexity-audit.md) —
+> 📋 **Complexity audit:** [a2a-complexity-audit](./a2a-complexity-audit) —
 > A2A doesn't reduce Colibri's code complexity today (6 protocols → 6 protocols,
 > ~0 net lines). It pays off at 10+ nodes or when third-party tools ship A2A
 > support. The Agent Card design below is a north star, not an implementation
@@ -234,7 +234,7 @@ data got there.
 
 ## Schema (mother PostgreSQL)
 
-The `hive_nodes` table already exists ([mother-hive](./mother-hive.md)). Hive
+The `hive_nodes` table already exists ([mother-hive](./mother-hive)). Hive
 Pane adds a lightweight view for the board:
 
 ```sql
@@ -270,8 +270,8 @@ or A2A push) is responsible for keeping it current.
 
 ## References
 
-- [glasspane](./glasspane.md) — local agent observation model
-- [mother-hive](./mother-hive.md) — node registry schema and SSH forced-command pattern
-- [task-board](./task-board.md) — capability scoring and cost tracking
-- [contracts](./contracts.md) — TaskCostSummary schema v1
-- [external-mcp](./external-mcp.md) — current MCP bridge (coexists with A2A)
+- [glasspane](./glasspane) — local agent observation model
+- [mother-hive](./mother-hive) — node registry schema and SSH forced-command pattern
+- [task-board](./task-board) — capability scoring and cost tracking
+- [contracts](./contracts) — TaskCostSummary schema v1
+- [external-mcp](./external-mcp) — current MCP bridge (coexists with A2A)

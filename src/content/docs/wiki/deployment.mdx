@@ -12,7 +12,7 @@ okf:
   source_of_truth: "docs/ISO-SERVICE-LAYOUT.md"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 The `clawdie` crate is Colibri's host installer. It discovers a machine's ZFS
 layout and provisions the `clawdie` service. On FreeBSD this means an rc.d
@@ -130,7 +130,7 @@ The installer does not touch provider API keys. A separate file — conventional
 before the daemon starts. This keeps the installer's blast radius limited to
 ZFS, directories, users, and service files.
 
-→ [vault-provision](./vault-provision.md)
+→ [vault-provision](./vault-provision)
 
 ### Steps are executed sequentially and stop on failure
 
@@ -182,6 +182,6 @@ After deployment, the service owns these paths:
 - `/var/log/clawdie/daemon.log` — stdout/stderr log
 - `/usr/local/etc/colibri/` — configuration and provider secrets
 
-→ [store-schema](./store-schema.md)
+→ [store-schema](./store-schema)
 
-→ [operator-cli](./operator-cli.md)
+→ [operator-cli](./operator-cli)

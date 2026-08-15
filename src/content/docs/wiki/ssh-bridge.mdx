@@ -16,11 +16,11 @@ okf:
 **Date:** 29.jun.2026
 **Driven by:** Mother hive communication; every USB node uses this to register and report cost.
 
-> **Companion doc:** [mother-hive](./mother-hive.md) — the _why_ behind each decision
+> **Companion doc:** [mother-hive](./mother-hive) — the _why_ behind each decision
 > (forced-command choice, single home, peer auth, seed-key policy). This doc
 > covers the _how_: the call flow, the pieces, and what to check when it breaks.
 
-← [index](./index.md)
+← [index](../)
 
 ## What this is
 
@@ -350,9 +350,9 @@ colibri-mcp tools | grep node_register
 
 ## See also
 
-- [mother-hive](./mother-hive.md) — the decisions behind this architecture (why forced-command, why single home, why peer auth, why key-on-seed)
-- [hive-routing](./hive-routing.md) — what the bridge carries: node identity, capabilities, cost-aware task routing
-- [external-mcp](./external-mcp.md) — how `colibri-mcp` hosts external MCP servers (the protocol the bridge plugs into)
+- [mother-hive](./mother-hive) — the decisions behind this architecture (why forced-command, why single home, why peer auth, why key-on-seed)
+- [hive-routing](./hive-routing) — what the bridge carries: node identity, capabilities, cost-aware task routing
+- [external-mcp](./external-mcp) — how `colibri-mcp` hosts external MCP servers (the protocol the bridge plugs into)
 - [MOTHER-SETUP.md](../../packaging/mother/MOTHER-SETUP.md) — step-by-step setup instructions, first-run checklist, verification
-- [cost-model](./cost-model.md) — per-task cost tracking (`report-task-cost` over this bridge)
-- [cost-dashboard](./cost-dashboard.md) — mother-side aggregation of costs pushed through this bridge
+- [cost-model](./cost-model) — per-task cost tracking (`report-task-cost` over this bridge)
+- [cost-dashboard](./cost-dashboard) — mother-side aggregation of costs pushed through this bridge

@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-deepseek/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 ## What this is
 
@@ -25,9 +25,9 @@ The three levers, by the question each answers:
 
 | Lever       | Question                  | Detail                                    |
 | ----------- | ------------------------- | ----------------------------------------- |
-| **Timing**  | _When_ do we run?         | [deepseek-pricing](./deepseek-pricing.md) |
-| **Caching** | _How much_ do we re-send? | [cost-model](./cost-model.md)             |
-| **Budget**  | _How big_ a context?      | [cost-model](./cost-model.md)             |
+| **Timing**  | _When_ do we run?         | [deepseek-pricing](./deepseek-pricing) |
+| **Caching** | _How much_ do we re-send? | [cost-model](./cost-model)             |
+| **Budget**  | _How big_ a context?      | [cost-model](./cost-model)             |
 
 ## 1. Timing — run in the valley
 
@@ -35,7 +35,7 @@ DeepSeek prices tokens by the clock: cheaper in the off-peak **valley** window,
 more at **peak**. Scheduling heavy or batchable work into valley hours cuts the
 per-token price with no change to the work itself.
 
-- Authoritative rates + UTC windows: [deepseek-pricing](./deepseek-pricing.md)
+- Authoritative rates + UTC windows: [deepseek-pricing](./deepseek-pricing)
 - The pricing table the runtime computes against: `hermes-bsd:agent/usage_pricing.py`
 
 ## 2. Caching — keep the prefix byte-stable
@@ -45,7 +45,7 @@ Colibri holds the system prefix byte-stable across requests so the provider
 serves it from cache instead of re-billing it. For a long-running session this
 is the largest lever.
 
-- Mechanics + cache-hit metering: [cost-model](./cost-model.md)
+- Mechanics + cache-hit metering: [cost-model](./cost-model)
 - The spawn-time prefix-stability work: [prefix-caching plan](../plans/2026-06-29-prefix-caching.md)
 
 ## 3. Budget — size the context to the task
@@ -54,7 +54,7 @@ Three cost modes — **fast / smart / max** — cap how much context a turn may
 spend, and the runtime **auto-escalates** only when a cheaper mode can't keep
 up. You pay for the headroom the task needs, not a flat maximum.
 
-- The modes + escalation: [cost-model](./cost-model.md)
+- The modes + escalation: [cost-model](./cost-model)
 
 ## How they compose
 
@@ -69,6 +69,6 @@ once — none of them trades off against the others.
 
 ## See also
 
-- [cost-dashboard](./cost-dashboard.md) — where the spend actually surfaces
-- [deepseek-pricing](./deepseek-pricing.md) — lever 1 detail
-- [cost-model](./cost-model.md) — levers 2 and 3 detail
+- [cost-dashboard](./cost-dashboard) — where the spend actually surfaces
+- [deepseek-pricing](./deepseek-pricing) — lever 1 detail
+- [cost-model](./cost-model) — levers 2 and 3 detail

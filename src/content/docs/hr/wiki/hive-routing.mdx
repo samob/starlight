@@ -17,7 +17,7 @@ selection live (#285); stable node UUID and hive-level cost aggregation pending.
 **Date:** 24.jun.2026
 **Driven by:** T1.5 per-task cost tracking (shipped) → T2.x routing
 
-> **Companion doc:** [hive-pane](./hive-pane.md) — the operator presentation
+> **Companion doc:** [hive-pane](./hive-pane) — the operator presentation
 > layer this engine feeds. Hive Pane is the "how it looks" (board, A2A discovery);
 > this doc is the "how it works" (identity, probes, routing, scheduling).
 
@@ -28,7 +28,7 @@ selection live (#285); stable node UUID and hive-level cost aggregation pending.
 | `mother_schema.sql`                      | `hive_nodes` table with `hw_profile` + `capabilities` JSONB                                                                                              | No stable node UUID; hostname is the key                  |
 | `derive_capabilities()` trigger          | Auto-computes `has_gpu`, `gpu_vendor`, `can_run_local_llm`, `max_model` from hw_profile                                                                  | Only GPU/VRAM heuristics — doesn't probe running services |
 | `clawdie-system-probe`                   | Collects GPU, RAM, CPU, disks, ZFS, WiFi, Vulkan, Colibri status                                                                                         | No ollama/llama.cpp probing                               |
-| `node-register-mcp`                      | UPSERTs hw_profile into `hive_nodes` on join — reachable over the bridge since `node_register` was allowlisted (#325, see [ssh-bridge](./ssh-bridge.md)) | No UUID generation at join time                           |
+| `node-register-mcp`                      | UPSERTs hw_profile into `hive_nodes` on join — reachable over the bridge since `node_register` was allowlisted (#325, see [ssh-bridge](./ssh-bridge)) | No UUID generation at join time                           |
 | `crates/colibri-daemon/src/scheduler.rs` | Cron/interval/one-shot jobs, capability matching (`pick_agent`), eval-driven `select_model`                                                              | Selection is per-host; no cross-hive awareness yet        |
 | `colibri-ledger`                         | Local SQLite `agents` table with UUID (v4 random)                                                                                                        | UUID is session-local, not hive-stable                    |
 | T1.5 cost tracking                       | Per-task cost captured in local SQLite                                                                                                                   | No hive-level cost aggregation                            |

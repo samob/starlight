@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-deepseek/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 ## What this is
 
@@ -39,7 +39,7 @@ you an upper bound but not the real cost. DeepSeek's API sometimes re-caches and
 sometimes doesn't — the probe measures what actually happened. The discount is
 too large (~120×) to leave unmeasured.
 
-→ [headroom-sidecar](./headroom-sidecar.md),
+→ [headroom-sidecar](./headroom-sidecar),
 [`COLIBRI-TOKENOMICS-TRIFECTA.md`](../COLIBRI-TOKENOMICS-TRIFECTA.md),
 [`crates/colibri-deepseek/src/lib.rs`](../../crates/colibri-deepseek/src/lib.rs)
 
@@ -78,7 +78,7 @@ needs to continue. Compaction preserves the semantic content at lower token cost
 The headroom sidecar is optional (off by default); without it, the fallback is
 simple truncation.
 
-→ [headroom-sidecar](./headroom-sidecar.md),
+→ [headroom-sidecar](./headroom-sidecar),
 [`crates/colibri-daemon/src/session.rs`](../../crates/colibri-daemon/src/session.rs)
 
 ### Cache-hit probe (DeepSeek-specific)
@@ -116,8 +116,8 @@ this workload?").
 
 ## See also
 
-- [deepseek-pricing](./deepseek-pricing.md) — per-token pricing table with peak-valley rates
-- [task-board](./task-board.md) — the scheduler that dispatches tasks within session budgets
-- [contracts](./contracts.md) — TaskCostSummary schema v1
-- [mother-hive](./mother-hive.md) — MCP architecture (different cost domain)
-- [quality-gates](./quality-gates.md) — the gate that validates cost-mode parsing
+- [deepseek-pricing](./deepseek-pricing) — per-token pricing table with peak-valley rates
+- [task-board](./task-board) — the scheduler that dispatches tasks within session budgets
+- [contracts](./contracts) — TaskCostSummary schema v1
+- [mother-hive](./mother-hive) — MCP architecture (different cost domain)
+- [quality-gates](./quality-gates) — the gate that validates cost-mode parsing

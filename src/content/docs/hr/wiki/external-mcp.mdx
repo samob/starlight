@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-mcp/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 `colibri-mcp` is the Model Context Protocol bridge between Colibri and
 MCP-capable editors (Zed, Cursor, Windsurf, Claude Code). It exposes the
@@ -109,7 +109,7 @@ reuse the same jail primitive as agent spawning:
 
 The root-only jail step honors the shared `COLIBRI_JAIL_PRIV_MODE` policy (`doas`
 by default — the operator USB included, since its mdo→doas migration).
-See [jail-confinement](./jail-confinement.md).
+See [jail-confinement](./jail-confinement).
 
 ### Request lifecycle
 
@@ -146,6 +146,6 @@ promoted to default ISO behavior, each limit should be addressed.
 
 ## See also
 
-- [jail-confinement](./jail-confinement.md) — jail policy reused for external MCP servers
-- [cost-model](./cost-model.md) — cost mode and the write-gated `colibri_set_cost_mode`
-- [skills-catalog](./skills-catalog.md) — read-only skill catalog exposed via `colibri_list_skills`
+- [jail-confinement](./jail-confinement) — jail policy reused for external MCP servers
+- [cost-model](./cost-model) — cost mode and the write-gated `colibri_set_cost_mode`
+- [skills-catalog](./skills-catalog) — read-only skill catalog exposed via `colibri_list_skills`

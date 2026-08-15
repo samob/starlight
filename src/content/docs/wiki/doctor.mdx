@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-daemon/src/doctor.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 **Status:** Shipped (v0.12.0+). 10 checks, two auto-fixable targets, client-side
 `colibri upgrade`. Cross-platform (Linux + FreeBSD, one `#[cfg]` for service restart).
@@ -21,7 +21,7 @@ okf:
 
 `status` is a passive snapshot (counts). `doctor` is a **battery of active
 checks** — each verifies one thing that has to be true for the control plane to
-work, and reports `PASS`/`WARN`/`FAIL`. It's the [task-dispatch-flow](./task-dispatch-flow.md)
+work, and reports `PASS`/`WARN`/`FAIL`. It's the [task-dispatch-flow](./task-dispatch-flow)
 "why won't my task run?" checklist, executable. Scope is **concrete** — check
 only what we actually have, never claim a check we can't back with a data source.
 
@@ -180,7 +180,7 @@ carry arbitrary socket commands.
 
 ## See also
 
-- [task-dispatch-flow](./task-dispatch-flow.md) — the stall checklist doctor automates
-- [factory-model](./factory-model.md) — the harness architecture doctor verifies
-- [hive-routing](./hive-routing.md) — per-node identity + capability probes
-- [mother-hive](./mother-hive.md) — the MCP-over-SSH path the hive `--json` query rides
+- [task-dispatch-flow](./task-dispatch-flow) — the stall checklist doctor automates
+- [factory-model](./factory-model) — the harness architecture doctor verifies
+- [hive-routing](./hive-routing) — per-node identity + capability probes
+- [mother-hive](./mother-hive) — the MCP-over-SSH path the hive `--json` query rides

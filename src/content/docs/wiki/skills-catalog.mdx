@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-ledger/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 `colibri-skills` is Colibri's read-only runtime consumer for skill
 artifacts. Skills are authored and reviewed in this repo's `.agent/skills/`
@@ -125,9 +125,9 @@ This matches the store's pragmatic relational model. If skill volumes grow
 beyond tens of thousands of chunks, we can move the FTS index to PostgreSQL
 pgvector; until then, SQLite keeps the control-plane self-contained.
 
-→ [store-schema](./store-schema.md)
+→ [store-schema](./store-schema)
 
-→ [store-schema](./store-schema.md)
+→ [store-schema](./store-schema)
 
 ### Status is a lifecycle marker, not a state machine
 
@@ -155,7 +155,7 @@ The CLI surface is planned as:
 `index-skills` refreshes the catalog from disk. The remaining commands query the
 runtime store. None mutate the `.agent/skills/` checkout.
 
-→ [operator-cli](./operator-cli.md)
+→ [operator-cli](./operator-cli)
 
 ## Entity shape
 
@@ -175,6 +175,6 @@ Skill
 
 ## See also
 
-- [store-schema](./store-schema.md) — coordination and planned skill catalog tables
-- [operator-cli](./operator-cli.md) — planned skill catalog CLI commands
-- [task-board](./task-board.md) — agents will match claimed tasks to skills by capability
+- [store-schema](./store-schema) — coordination and planned skill catalog tables
+- [operator-cli](./operator-cli) — planned skill catalog CLI commands
+- [task-board](./task-board) — agents will match claimed tasks to skills by capability

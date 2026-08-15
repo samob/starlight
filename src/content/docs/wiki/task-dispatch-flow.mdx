@@ -12,13 +12,13 @@ okf:
   source_of_truth: "crates/colibri-glasspane/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 ## What this is
 
 The end-to-end path a task takes from submission to a running agent and back.
-This page exists because the chain spans three modules ([task-board](./task-board.md)
-scheduling, [agent-harness](./agent-harness.md) spawning, and the daemon poll
+This page exists because the chain spans three modules ([task-board](./task-board)
+scheduling, [agent-harness](./agent-harness) spawning, and the daemon poll
 loop), and it's a recurring source of "why won't the agent pick up my task?"
 confusion. Every stage below is on `main` as of 0.12.0.
 
@@ -67,7 +67,7 @@ agent works, emits JSONL → glasspane state → done event → rpc_task_map cor
 | **Spawn**          | Autospawn starts the harness as **`zot rpc --provider deepseek --model deepseek-v4-flash`** — bare `rpc` would default to openai-codex (#344 regressor). stdin is piped for RPC.                                                                              | [`autospawn_agent_if_configured`](../../crates/colibri-daemon/src/socket.rs), `AgentKind::Zot.args`                |
 | **Register**       | The spawned agent is registered in the store; its `name` column holds the live spawn-handle id used in `state.agents`.                                                                                                                                        | `register_agent` (store row `name` = spawn id)                                                                     |
 | **Dispatch**       | The poll loop resolves the spawn handle from the claimed task's `agent_id`, gets `rpc_sender()`, and writes the task text to the agent's stdin, transitioning the task to `Started`.                                                                          | [`poll_tasks`](../../crates/colibri-daemon/src/daemon.rs) → `send_prompt`                                          |
-| **Process + cost** | The agent works and emits JSONL ([glasspane](./glasspane.md)). At `done`, the RPC completion path correlates via `rpc_task_map` and bills the **delta** (usage at done − usage at prompt) — not the cumulative total.                                         | `set_task_cost`, `finalize_rpc_task` (#341), `write_task_eval`, `push_cost_to_mother`                              |
+| **Process + cost** | The agent works and emits JSONL ([glasspane](./glasspane)). At `done`, the RPC completion path correlates via `rpc_task_map` and bills the **delta** (usage at done − usage at prompt) — not the cumulative total.                                         | `set_task_cost`, `finalize_rpc_task` (#341), `write_task_eval`, `push_cost_to_mother`                              |
 
 ## Why a task can stall (and what it is _not_)
 
@@ -98,7 +98,7 @@ missing code. The usual causes, in order:
 
 ## See also
 
-- [task-board](./task-board.md) — scheduler internals (capability scoring, intake drain)
-- [agent-harness](./agent-harness.md) — zot/Colibri split, autospawn, AgentKind
-- [glasspane](./glasspane.md) — how agent stdout becomes observable state
-- [cost-dashboard](./cost-dashboard.md) — where cost lands after completion
+- [task-board](./task-board) — scheduler internals (capability scoring, intake drain)
+- [agent-harness](./agent-harness) — zot/Colibri split, autospawn, AgentKind
+- [glasspane](./glasspane) — how agent stdout becomes observable state
+- [cost-dashboard](./cost-dashboard) — where cost lands after completion

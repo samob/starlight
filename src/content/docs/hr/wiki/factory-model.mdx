@@ -46,15 +46,15 @@ is what the daemon does every tick:
 | Harness component | Colibri                                                |
 | ----------------- | ------------------------------------------------------ |
 | Instructions      | Project rule files, skill files, system prompts        |
-| Tools             | MCP servers (see [external-mcp](./external-mcp.md))    |
+| Tools             | MCP servers (see [external-mcp](./external-mcp))    |
 | Orchestration     | `scheduler.rs` — autospawn, heartbeat, task dispatch   |
 | Guardrails        | `cost_mode` enforcement, model selection constraints   |
 | Observability     | `task_costs`, PostgreSQL dashboard, screenshot capture |
 | Memory            | SQLite coordination store, session JSONL               |
 
-See [agent-harness](./agent-harness.md) for the zot/Colibri split,
-[doctor](./doctor.md) for the self-diagnosis battery, and
-[task-dispatch-flow](./task-dispatch-flow.md) for the end-to-end task path.
+See [agent-harness](./agent-harness) for the zot/Colibri split,
+[doctor](./doctor) for the self-diagnosis battery, and
+[task-dispatch-flow](./task-dispatch-flow) for the end-to-end task path.
 
 ## The spectrum: vibe coding → agentic engineering
 
@@ -91,7 +91,7 @@ decomposition and parallel dispatch are planned.
 
 The daemon now self-maintains via `colibri doctor --fix`: stale agents are
 auto-pruned on every `--fix` run, and `colibri upgrade` rebuilds + restarts
-the daemon from source when the binary is stale. See [doctor](./doctor.md).
+the daemon from source when the binary is stale. See [doctor](./doctor).
 
 ## Context engineering
 
@@ -112,7 +112,7 @@ The whitepaper identifies six context types. Colibri covers all six:
 Colibri's skill system implements the whitepaper's "Agent Skills" pattern
 exactly — lightweight metadata at startup, full instructions loaded on task
 match, deep references pulled only when needed. The `colibri-skills` crate
-with FTS5 search is the catalog. See [skills-catalog](./skills-catalog.md).
+with FTS5 search is the catalog. See [skills-catalog](./skills-catalog).
 
 ## Economics
 
@@ -129,7 +129,7 @@ savings come from cost capture, model selection, context efficiency via skills,
 and the eval pipeline.
 
 The whitepaper's key OpEx metric — first-pass success rate — is not yet tracked
-in Colibri. See [model-selection-and-eval](./model-selection-and-eval.md) for
+in Colibri. See [model-selection-and-eval](./model-selection-and-eval) for
 the eval harness that will support it.
 
 Per-task costs now carry a `prompt_hash` (#308) — enabling prompt→cost
@@ -150,8 +150,8 @@ production, without a rewrite or a separate deployment pipeline.
 ## References
 
 - [Kaggle whitepaper](https://www.kaggle.com/whitepaper-the-new-SDLC-with-vibe-coding)
-- [agent-harness](./agent-harness.md) — zot/Colibri split
-- [task-dispatch-flow](./task-dispatch-flow.md) — end-to-end task path
-- [model-selection-and-eval](./model-selection-and-eval.md) — eval harness + model routing
-- [doctor](./doctor.md) — self-diagnosis battery
-- [cost-model](./cost-model.md) — token economics
+- [agent-harness](./agent-harness) — zot/Colibri split
+- [task-dispatch-flow](./task-dispatch-flow) — end-to-end task path
+- [model-selection-and-eval](./model-selection-and-eval) — eval harness + model routing
+- [doctor](./doctor) — self-diagnosis battery
+- [cost-model](./cost-model) — token economics

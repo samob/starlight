@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-skills/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 [clawdie/layered-soul](https://code.smilepowered.org/clawdie/layered-soul) is the
 portable, harness-agnostic source of durable identity + reviewed context. This doc
@@ -35,7 +35,7 @@ table as `clawdie-iso/scripts/import-clawdie-skills.sh`; idempotent, safe to re-
 The the Colibri adapter in layered-soul names a "Layered Memory Fabric" with
 three stores — `system_skills`, `system_brain`, `system_ops`. As of 13.jun.2026
 only a single flat `skills` table exists; the rest is **design only**
-([skills-catalog](./skills-catalog.md)), so the importer intentionally does not target it.
+([skills-catalog](./skills-catalog)), so the importer intentionally does not target it.
 
 | Layered Soul source             | Target (planned) | Status                                                     |
 | ------------------------------- | ---------------- | ---------------------------------------------------------- |
@@ -52,12 +52,12 @@ then re-import — runtime copies are ephemeral consumers.
 ## Closing the gap (future work)
 
 1. Implement `system_brain` per the planned schema (see
-   [skills-catalog](./skills-catalog.md)), then extend the importer
+   [skills-catalog](./skills-catalog)), then extend the importer
    to load curated memories.
 2. Migrate the flat `skills` table to the planned `system_skills` schema.
 3. Define and import `system_ops` task/job manifests.
 
 ## See also
 
-- [skills-catalog](./skills-catalog.md) — Colibri's read-only runtime skill consumer
-- [store-schema](./store-schema.md) — planned `system_skills` / `system_brain` tables
+- [skills-catalog](./skills-catalog) — Colibri's read-only runtime skill consumer
+- [store-schema](./store-schema) — planned `system_skills` / `system_brain` tables

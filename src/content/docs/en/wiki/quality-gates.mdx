@@ -12,7 +12,7 @@ okf:
   source_of_truth: "AGENTS.md"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 ## Decision
 
@@ -48,7 +48,7 @@ gate nobody runs (and that's red anyway) is the root cause of drift reaching
 
 ## Relationship to this wiki
 
-The [naming-decisions](./naming-decisions.md) ledger + `wiki-lint --strict` are
+The [naming-decisions](./naming-decisions) ledger + `wiki-lint --strict` are
 the _semantic_ counterpart to `ci-checks.sh`: the compiler/clippy catch broken
 _code_, but not a doc that still describes the old design or a name that drifted.
 The wiki lint covers that gap. It is now part of the mandatory gate — a drift
@@ -56,5 +56,5 @@ failure blocks the push, same as a clippy warning.
 
 ## See also
 
-- [agent-harness](./agent-harness.md)
-- [naming-decisions](./naming-decisions.md)
+- [agent-harness](./agent-harness)
+- [naming-decisions](./naming-decisions)

@@ -23,7 +23,7 @@ selector reads [`Store::model_success_rates`] and runs at agent spawn
 (long-lived harnesses, not per-task dispatch); gated by
 `COLIBRI_MODEL_SELECTION`, off by default.
 
-> **Companion doc:** [hive-routing](./hive-routing.md) — the capability matrix,
+> **Companion doc:** [hive-routing](./hive-routing) — the capability matrix,
 > machine identity, and routing engine. This doc covers what the routing engine
 > _optimizes for_ (model selection) and how it knows if it's winning (eval harness).
 
@@ -466,7 +466,7 @@ task arrives at scheduler
 
 ## References
 
-- [hive-routing](./hive-routing.md) — capability matrix, machine identity, routing engine
-- [cost-model](./cost-model.md) — T1.4 cache warming, T1.5 per-task cost tracking
-- [glasspane](./glasspane.md) — agent state machine, usage tracking
-- [task-board](./task-board.md) — task lifecycle
+- [hive-routing](./hive-routing) — capability matrix, machine identity, routing engine
+- [cost-model](./cost-model) — T1.4 cache warming, T1.5 per-task cost tracking
+- [glasspane](./glasspane) — agent state machine, usage tracking
+- [task-board](./task-board) — task lifecycle

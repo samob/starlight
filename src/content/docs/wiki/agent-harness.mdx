@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-glasspane/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md)
+---← [index](../)
 
 ## Architecture
 
@@ -79,7 +79,7 @@ agent. The same prune reclaims any tasks those agents held in-flight
 - `AgentKind` enum (args, runtime, credentials): `crates/colibri-daemon/src/socket.rs`
 - Autospawn, capability probe, agent registration: `crates/colibri-daemon/src/socket.rs`
   (`default_agent_args`, `autospawn_agent_if_configured`, `probe_capabilities`)
-- Wire format: [agent-events-reference](./agent-events-reference.md)
+- Wire format: [agent-events-reference](./agent-events-reference)
 - End-to-end test, zot: `crates/colibri-daemon/tests/zot_rpc_driver.rs`
   (auto-finds zot in PATH, skips gracefully if absent)
 - End-to-end test, pi: `crates/colibri-daemon/tests/pi_spawn_live.rs`
@@ -87,6 +87,6 @@ agent. The same prune reclaims any tasks those agents held in-flight
 
 ## See also
 
-- [task-dispatch-flow](./task-dispatch-flow.md) — the full submit → done chain
-- [naming-decisions](./naming-decisions.md) — harness naming history
-- [hive-routing](./hive-routing.md) — capability-based task dispatch
+- [task-dispatch-flow](./task-dispatch-flow) — the full submit → done chain
+- [naming-decisions](./naming-decisions) — harness naming history
+- [hive-routing](./hive-routing) — capability-based task dispatch

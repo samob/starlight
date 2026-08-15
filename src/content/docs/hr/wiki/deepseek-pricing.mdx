@@ -12,7 +12,7 @@ okf:
   source_of_truth: "crates/colibri-deepseek/src/lib.rs"
   last_verified: "2026-08-02"
   verified_by: "opus-smilepowered"
----← [index](./index.md) | → [cost-model](./cost-model.md)
+---← [index](../) | → [cost-model](./cost-model)
 
 ## What this is
 
@@ -64,7 +64,7 @@ cost 2×. No immediate code changes; revisit after MCP arc closes.
       doesn't silently under-report AM spend
 - [ ] Audit cron jobs — reschedule any running 08:00–12:00 CEST to valley hours
 - [ ] Consider time-aware model routing (flash in peak, pro in valley) per
-      [tokenomics](./tokenomics.md) trifecta strategy
+      [tokenomics](./tokenomics) trifecta strategy
 
 ## Where this lives in code
 
@@ -89,6 +89,6 @@ orders of magnitude cheaper than a cache-miss turn.
 
 ## See also
 
-- [cost-model](./cost-model.md) — byte-stable prefixes and cache-hit metering
-- [cost-dashboard](./cost-dashboard.md) — mother-side cost observability
-- [hive-routing](./hive-routing.md) — cost-aware task routing across nodes
+- [cost-model](./cost-model) — byte-stable prefixes and cache-hit metering
+- [cost-dashboard](./cost-dashboard) — mother-side cost observability
+- [hive-routing](./hive-routing) — cost-aware task routing across nodes
